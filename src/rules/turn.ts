@@ -1,6 +1,7 @@
 import { baseValue, type Card, type Rank } from "./cards";
 import { classify } from "./combos";
 import { pickableFromDiscard } from "./discard";
+import { subsets } from "./subsets";
 import type { DiscardPile, PlayerId } from "./opening";
 
 export interface RoundResult {
@@ -151,15 +152,4 @@ function canPartition(cards: Card[], jokerRank: Rank | null): boolean {
     if (canPartition(removeCards(rest, group), jokerRank)) return true;
   }
   return false;
-}
-
-function subsets(cards: Card[], minSize: number, maxSize: number): Card[][] {
-  const out: Card[][] = [];
-  const walk = (start: number, picked: Card[]) => {
-    if (picked.length >= minSize) out.push(picked);
-    if (picked.length === maxSize) return;
-    for (let i = start; i < cards.length; i++) walk(i + 1, [...picked, cards[i]]);
-  };
-  walk(0, []);
-  return out;
 }
