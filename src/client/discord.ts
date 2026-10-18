@@ -29,7 +29,7 @@ export async function connectDiscord(onStep: (message: string) => void): Promise
     at("Menunggu izin di Discord (authorize)...");
     // Discord menolak request tanpa redirect_uri. Nilainya harus sama dengan yang terdaftar di OAuth2 -> Redirects.
     // Tipe SDK tidak memuat field ini, jadi request disimpan di variabel dulu (tidak kena cek properti berlebih).
-    const request = {
+    const request: Parameters<typeof sdk.commands.authorize>[0] & { redirect_uri: string } = {
       client_id: clientId,
       response_type: "code",
       state: "",
