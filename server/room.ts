@@ -37,9 +37,27 @@ export const BOT_PREFIX = "bot:";
 export interface RoomOptions {
   target: number;
   disconnectTimeoutMs: number;
+  // Pemain dianggap pergi jika tidak melakukan permintaan selama ini.
+  presenceMs: number;
   rng?: () => number;
-  onChange?: () => void;
+  now?: () => number;
   botDelayMs?: number;
+}
+
+// Seluruh state ruang dalam bentuk JSON. Disimpan di antara request karena serverless tidak menyimpan memori.
+export interface RoomSnapshot {
+  seats: string[];
+  status: RoomStatus;
+  session: SessionState;
+  lastRoundScores: number[] | null;
+  pausedSeat: PlayerId | null;
+  pausedAt: number | null;
+  resumeStatus: RoomStatus;
+  firstPlayer: PlayerId;
+  opening: OpeningState | null;
+  round: RoundState | null;
+  botDueAt: number | null;
+  lastSeen: (number | null)[];
 }
 
 // Papan ronde yang sedang berjalan, atau fase pembukaan (jika ronde belum mulai main).
@@ -57,6 +75,9 @@ export interface Board {
   result: RoundResult | null;
 }
 
+// Batas langkah bot per request. Bot hanya jalan saat jatuh tempo, jadi ini sekadar pengaman.
+const MAX_BOT_STEPS_PER_TICK = 50;
+
 export class Room {
   status: RoomStatus = "opening";
   session: SessionState;
@@ -64,12 +85,14 @@ export class Room {
   pausedSeat: PlayerId | null = null;
 
   private readonly rng: () => number;
+  private readonly now: () => number;
   private firstPlayer: PlayerId = 0;
   private opening: OpeningState | null = null;
   private round: RoundState | null = null;
   private resumeStatus: RoomStatus = "opening";
-  private timer: ReturnType<typeof setTimeout> | null = null;
-  private botTimer: ReturnType<typeof setTimeout> | null = null;
+  private pausedAt: number | null = null;
+  private botDueAt: number | null = null;
+  private lastSeen: (number | null)[] = [null, null, null, null];
 
   constructor(
     readonly seats: string[],
@@ -77,9 +100,70 @@ export class Room {
   ) {
     if (seats.length !== 4) throw new Error("BAD_SEAT_COUNT");
     this.rng = options.rng ?? Math.random;
+    this.now = options.now ?? Date.now;
     this.session = { totals: [0, 0, 0, 0], target: options.target, rounds: 0, winner: null };
     this.opening = this.newOpening();
     this.scheduleBot();
+  }
+
+  static restore(snapshot: RoomSnapshot, options: RoomOptions): Room {
+    const room = new Room(snapshot.seats, options);
+    room.status = snapshot.status;
+    room.session = snapshot.session;
+    room.lastRoundScores = snapshot.lastRoundScores;
+    room.pausedSeat = snapshot.pausedSeat;
+    room.pausedAt = snapshot.pausedAt;
+    room.resumeStatus = snapshot.resumeStatus;
+    room.firstPlayer = snapshot.firstPlayer;
+    room.opening = snapshot.opening;
+    room.round = snapshot.round;
+    room.botDueAt = snapshot.botDueAt;
+    room.lastSeen = snapshot.lastSeen;
+    return room;
+  }
+
+  snapshot(): RoomSnapshot {
+    return {
+      seats: [...this.seats],
+      status: this.status,
+      session: this.session,
+      lastRoundScores: this.lastRoundScores,
+      pausedSeat: this.pausedSeat,
+      pausedAt: this.pausedAt,
+      resumeStatus: this.resumeStatus,
+      firstPlayer: this.firstPlayer,
+      opening: this.opening,
+      round: this.round,
+      botDueAt: this.botDueAt,
+      lastSeen: [...this.lastSeen],
+    };
+  }
+
+  // Dipanggil di setiap request sebelum tindakan: jalankan bot yang sudah jatuh tempo,
+  // tandai pemain yang tidak terlihat sebagai terputus, dan batalkan sesi jika terlalu lama terputus.
+  tick(): void {
+    const now = this.now();
+    if (this.status === "paused" && this.pausedAt !== null && now - this.pausedAt >= this.options.disconnectTimeoutMs) {
+      this.cancel();
+      return;
+    }
+    if (this.status === "opening" || this.status === "playing") {
+      const stale = this.seats.findIndex((seat, i) => {
+        const last = this.lastSeen[i];
+        return !seat.startsWith(BOT_PREFIX) && last !== null && now - last > this.options.presenceMs;
+      });
+      if (stale !== -1) this.pause(stale as PlayerId, now);
+    }
+    for (let i = 0; i < MAX_BOT_STEPS_PER_TICK && this.botDueAt !== null && this.botDueAt <= now; i++) {
+      this.botDueAt = null;
+      this.botAct();
+    }
+  }
+
+  // Setiap request dari pemain mencatat bahwa ia masih ada. Jika ruang sedang terjeda karena pemain ini, ruang lanjut.
+  touch(seat: PlayerId): void {
+    this.lastSeen[seat] = this.now();
+    if (this.status === "paused" && seat === this.pausedSeat) this.resume();
   }
 
   handle(seat: PlayerId, intent: Intent): void {
@@ -87,26 +171,6 @@ export class Room {
     if (this.status === "cancelled" || this.status === "finished") throw new Error("ROOM_CLOSED");
     if (this.status === "opening") this.handleOpening(seat, intent);
     else this.handlePlay(seat, intent);
-    this.options.onChange?.();
-    this.scheduleBot();
-  }
-
-  onDisconnect(seat: PlayerId): void {
-    if (this.status !== "opening" && this.status !== "playing") return;
-    this.resumeStatus = this.status;
-    this.status = "paused";
-    this.pausedSeat = seat;
-    this.timer = setTimeout(() => this.cancel(), this.options.disconnectTimeoutMs);
-    this.options.onChange?.();
-  }
-
-  onReconnect(seat: PlayerId): void {
-    if (this.status !== "paused" || seat !== this.pausedSeat) return;
-    if (this.timer !== null) clearTimeout(this.timer);
-    this.timer = null;
-    this.status = this.resumeStatus;
-    this.pausedSeat = null;
-    this.options.onChange?.();
     this.scheduleBot();
   }
 
@@ -142,6 +206,26 @@ export class Room {
       drewFrom: null,
       result: null,
     };
+  }
+
+  private pause(seat: PlayerId, now: number): void {
+    this.resumeStatus = this.status;
+    this.status = "paused";
+    this.pausedSeat = seat;
+    this.pausedAt = now;
+    this.botDueAt = null;
+  }
+
+  private resume(): void {
+    this.status = this.resumeStatus;
+    this.pausedSeat = null;
+    this.pausedAt = null;
+    this.scheduleBot();
+  }
+
+  private cancel(): void {
+    this.status = "cancelled";
+    this.botDueAt = null;
   }
 
   private handleOpening(seat: PlayerId, intent: Intent): void {
@@ -241,26 +325,35 @@ export class Room {
     };
   }
 
-  private cancel(): void {
-    this.timer = null;
-    this.status = "cancelled";
-    this.options.onChange?.();
+  // Pemain yang masuk setelah ruang dibuat boleh mengambil kursi bot yang belum bertindak
+  // di pembukaan. Dipakai untuk testing dengan sedikit akun.
+  claimBotSeat(userId: string): PlayerId | null {
+    if (this.status !== "opening" || this.opening === null) return null;
+    const order = this.openingOrder();
+    for (let i = this.opening.discard.cards.length; i < order.length; i++) {
+      const seat = order[i];
+      if (!this.seats[seat].startsWith(BOT_PREFIX)) continue;
+      this.seats[seat] = userId;
+      this.scheduleBot();
+      return seat;
+    }
+    return null;
   }
 
-  // Menjadwalkan satu langkah bot jika giliran saat ini milik kursi bot.
-  // Setiap langkah yang berhasil memanggil handle lagi, jadi bot berjalan berurutan.
+  // Menjadwalkan langkah bot jika giliran saat ini milik kursi bot. Langkah dijalankan di tick berikutnya
+  // setelah waktunya tiba, bukan dengan setTimeout.
   private scheduleBot(): void {
-    if (this.botTimer !== null) return;
+    if (this.botDueAt !== null) return;
     const seat = this.actingSeat();
     if (seat === null || !this.seats[seat].startsWith(BOT_PREFIX)) return;
-    this.botTimer = setTimeout(() => {
-      this.botTimer = null;
-      this.botAct(seat);
-    }, this.options.botDelayMs ?? 800);
+    this.botDueAt = this.now() + (this.options.botDelayMs ?? 800);
   }
 
-  private botAct(seat: PlayerId): void {
+  private botAct(): void {
     if (this.status !== "opening" && this.status !== "playing") return;
+    const seat = this.actingSeat();
+    // Kursi bisa sudah diambil pemain sungguhan sejak jadwal bot dibuat.
+    if (seat === null || !this.seats[seat].startsWith(BOT_PREFIX)) return;
     try {
       this.handle(seat, this.chooseBotIntent(seat));
     } catch {

@@ -1,16 +1,36 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { createRoom, type Room } from "../../server/room";
+import { createRoom, Room } from "../../server/room";
 import { viewFor } from "../../server/view";
 
 const TIMEOUT_MS = 60_000;
+const PRESENCE_MS = 5_000;
 
 function newRoom(): Room {
   // rng konstan membuat kocokan deterministik, jadi tes tidak bergantung pada urutan acak.
   return createRoom(["u0", "u1", "u2", "u3"], {
     target: 1000,
     disconnectTimeoutMs: TIMEOUT_MS,
+    presenceMs: PRESENCE_MS,
     rng: () => 0,
   });
+}
+
+function botRoom(): Room {
+  return createRoom(["u0", "bot:1", "bot:2", "bot:3"], {
+    target: 1000,
+    disconnectTimeoutMs: TIMEOUT_MS,
+    presenceMs: PRESENCE_MS,
+    rng: () => 0,
+    botDelayMs: 10,
+  });
+}
+
+// Maju waktu sambil menjalankan tick, seperti request polling yang datang terus-menerus.
+function advance(room: Room, ms: number): void {
+  for (let t = 0; t < ms; t += 10) {
+    vi.advanceTimersByTime(10);
+    room.tick();
+  }
 }
 
 // Mainkan seluruh pembukaan: tiap pemain mengambil lalu membuang kartu dengan angka unik.
@@ -59,26 +79,30 @@ test("unknown card id is refused", () => {
   expect(() => room.handle(0, { type: "opening_discard", cardId: "ZZ" })).toThrow("CARD_NOT_IN_HAND");
 });
 
-test("disconnect pauses the round", () => {
+test("a player who stops polling pauses the round", () => {
   const room = newRoom();
-  room.onDisconnect(1);
+  room.touch(1);
+  advance(room, PRESENCE_MS + 10);
   expect(room.status).toBe("paused");
+  expect(room.pausedSeat).toBe(1);
   expect(() => room.handle(0, { type: "opening_draw" })).toThrow("PAUSED");
 });
 
-test("reconnect within timeout resumes", () => {
+test("returning within timeout resumes the round", () => {
   const room = newRoom();
-  room.onDisconnect(1);
-  vi.advanceTimersByTime(TIMEOUT_MS - 1000);
-  room.onReconnect(1);
+  room.touch(1);
+  advance(room, PRESENCE_MS + 10);
+  advance(room, TIMEOUT_MS - 1000);
+  room.touch(1);
   expect(room.status).toBe("opening");
+  expect(room.pausedSeat).toBeNull();
   expect(() => room.handle(0, { type: "opening_draw" })).not.toThrow();
 });
 
 test("timeout cancels the session", () => {
   const room = newRoom();
-  room.onDisconnect(1);
-  vi.advanceTimersByTime(TIMEOUT_MS);
+  room.touch(1);
+  advance(room, PRESENCE_MS + TIMEOUT_MS + 100);
   expect(room.status).toBe("cancelled");
   expect(() => room.handle(0, { type: "opening_draw" })).toThrow("ROOM_CLOSED");
 });
@@ -91,33 +115,26 @@ test("finished opening starts play with the first player", () => {
   expect(room.board()!.phase).toBe("draw");
 });
 
-test("onChange is called after each accepted intent", () => {
-  let changes = 0;
-  const room = createRoom(["u0", "u1", "u2", "u3"], {
-    target: 1000,
-    disconnectTimeoutMs: TIMEOUT_MS,
-    rng: () => 0,
-    onChange: () => changes++,
-  });
+test("room state survives a JSON round trip", () => {
+  const room = newRoom();
   room.handle(0, { type: "opening_draw" });
-  expect(changes).toBe(1);
-});
-
-function botRoom(): Room {
-  return createRoom(["u0", "bot:1", "bot:2", "bot:3"], {
+  const stored = JSON.parse(JSON.stringify(room.snapshot()));
+  const restored = Room.restore(stored, {
     target: 1000,
     disconnectTimeoutMs: TIMEOUT_MS,
+    presenceMs: PRESENCE_MS,
     rng: () => 0,
-    botDelayMs: 10,
   });
-}
+  expect(restored.board()).toEqual(room.board());
+  expect(() => restored.handle(0, { type: "opening_discard", cardId: viewFor(restored, 0).hand[0].id })).not.toThrow();
+});
 
 test("bots complete the opening after the human", () => {
   const room = botRoom();
   room.handle(0, { type: "opening_draw" });
   const card = viewFor(room, 0).hand[0];
   room.handle(0, { type: "opening_discard", cardId: card.id });
-  vi.advanceTimersByTime(1000);
+  advance(room, 200);
   expect(room.status).toBe("playing");
   expect(room.board()!.turn).toBe(0);
 });
@@ -128,11 +145,13 @@ test("an all-bot room keeps playing rounds without stalling", () => {
   const room = createRoom(["bot:1", "bot:2", "bot:3", "bot:4"], {
     target: 300,
     disconnectTimeoutMs: TIMEOUT_MS,
+    presenceMs: PRESENCE_MS,
     rng: () => 0.5,
     botDelayMs: 1,
   });
   for (let step = 0; step < 20_000; step++) {
-    if (!vi.advanceTimersToNextTimer()) break;
+    vi.advanceTimersByTime(1);
+    room.tick();
   }
   expect(room.status).toBe("playing");
   expect(room.session.rounds).toBeGreaterThan(10);
@@ -142,10 +161,10 @@ test("bots take their turns and hand the turn back", () => {
   const room = botRoom();
   room.handle(0, { type: "opening_draw" });
   room.handle(0, { type: "opening_discard", cardId: viewFor(room, 0).hand[0].id });
-  vi.advanceTimersByTime(1000);
+  advance(room, 200);
   room.handle(0, { type: "draw_stock" });
   room.handle(0, { type: "discard", cardId: viewFor(room, 0).hand[0].id });
-  vi.advanceTimersByTime(1000);
+  advance(room, 200);
   expect(room.board()!.turn).toBe(0);
   expect(room.board()!.phase).toBe("draw");
 });
