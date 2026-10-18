@@ -13,8 +13,8 @@ export function connectSocket(): Socket {
   return io(SOCKET_URL, { transports: ["websocket"] });
 }
 
-export function joinChannel(socket: Socket, session: DiscordSession): Promise<Ack> {
-  return new Promise((resolve) => socket.emit("join_channel", session, resolve));
+export function joinChannel(socket: Socket, session: DiscordSession, addBots: boolean): Promise<Ack> {
+  return new Promise((resolve) => socket.emit("join_channel", { ...session, addBots }, resolve));
 }
 
 export function sendIntent(socket: Socket, intent: Intent): Promise<Ack> {

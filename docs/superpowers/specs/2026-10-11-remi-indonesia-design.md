@@ -15,7 +15,7 @@ Membuat permainan kartu Remi Indonesia yang bisa dimainkan 4 orang secara online
 
 ## Bukan tujuan (non-goals)
 
-- Bukan lawan komputer (bot) di versi pertama.
+- Bukan lawan komputer untuk pemain sungguhan. Bot hanya mengisi kursi kosong saat testing (lihat keputusan bot di bawah).
 - Bukan permainan dengan lebih atau kurang dari 4 pemain.
 - Bukan lobi publik atau sistem matchmaking.
 - Bukan chat teks di dalam permainan (pemain bisa pakai chat Discord).
@@ -80,3 +80,4 @@ Membuat permainan kartu Remi Indonesia yang bisa dimainkan 4 orang secara online
 4. Tidak ada database di versi pertama.
 5. Sesi dibuat dan dikelola dari dalam Discord Activity, bukan lewat perintah slash bot.
 6. Batas waktu menunggu pemain yang disconnect: nilai awal 60 detik, bisa diubah di konfigurasi. Angka ini belum diuji dan harus dicek saat playtest.
+7. Bot untuk testing: bot mengisi kursi kosong (dengan `addBots` saat membuat ruang) dan memakai intent yang sama dengan pemain, sehingga aturan tetap dijalankan engine. Strateginya sederhana: selalu ambil dari cangkulan, buang kartu bernilai tertinggi (bukan joker), dan tidak pernah mengambil dari buangan. Bot tidak menggantikan pemain yang disconnect; sesi tetap menunggu sampai batas waktu.

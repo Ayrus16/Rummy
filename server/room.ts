@@ -1,5 +1,5 @@
-import { makeDeck, shuffle, type Card, type Rank } from "../src/rules/cards";
-import { deal } from "../src/rules/deal";
+import { baseValue, makeDeck, shuffle, type Card, type Rank } from "../src/rules/cards";
+import { HAND_SIZE, deal } from "../src/rules/deal";
 import {
   openingDiscard,
   openingDraw,
@@ -31,11 +31,15 @@ export type Intent =
 
 export type RoomStatus = "opening" | "playing" | "paused" | "cancelled" | "finished";
 
+// Kursi dengan ID berawalan ini dikendalikan server (bot), bukan oleh pemain.
+export const BOT_PREFIX = "bot:";
+
 export interface RoomOptions {
   target: number;
   disconnectTimeoutMs: number;
   rng?: () => number;
   onChange?: () => void;
+  botDelayMs?: number;
 }
 
 // Papan ronde yang sedang berjalan, atau fase pembukaan (jika ronde belum mulai main).
@@ -65,6 +69,7 @@ export class Room {
   private round: RoundState | null = null;
   private resumeStatus: RoomStatus = "opening";
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private botTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     readonly seats: string[],
@@ -74,6 +79,7 @@ export class Room {
     this.rng = options.rng ?? Math.random;
     this.session = { totals: [0, 0, 0, 0], target: options.target, rounds: 0, winner: null };
     this.opening = this.newOpening();
+    this.scheduleBot();
   }
 
   handle(seat: PlayerId, intent: Intent): void {
@@ -82,6 +88,7 @@ export class Room {
     if (this.status === "opening") this.handleOpening(seat, intent);
     else this.handlePlay(seat, intent);
     this.options.onChange?.();
+    this.scheduleBot();
   }
 
   onDisconnect(seat: PlayerId): void {
@@ -100,6 +107,7 @@ export class Room {
     this.status = this.resumeStatus;
     this.pausedSeat = null;
     this.options.onChange?.();
+    this.scheduleBot();
   }
 
   board(): Board | null {
@@ -238,6 +246,48 @@ export class Room {
     this.status = "cancelled";
     this.options.onChange?.();
   }
+
+  // Menjadwalkan satu langkah bot jika giliran saat ini milik kursi bot.
+  // Setiap langkah yang berhasil memanggil handle lagi, jadi bot berjalan berurutan.
+  private scheduleBot(): void {
+    if (this.botTimer !== null) return;
+    const seat = this.actingSeat();
+    if (seat === null || !this.seats[seat].startsWith(BOT_PREFIX)) return;
+    this.botTimer = setTimeout(() => {
+      this.botTimer = null;
+      this.botAct(seat);
+    }, this.options.botDelayMs ?? 800);
+  }
+
+  private botAct(seat: PlayerId): void {
+    if (this.status !== "opening" && this.status !== "playing") return;
+    try {
+      this.handle(seat, this.chooseBotIntent(seat));
+    } catch {
+      // Bot tidak menemukan langkah sah (jarang terjadi). Sesi menunggu, tidak dipaksa.
+    }
+  }
+
+  private chooseBotIntent(seat: PlayerId): Intent {
+    if (this.status === "opening") {
+      const hand = this.opening!.hands[seat];
+      if (hand.length === HAND_SIZE) return { type: "opening_draw" };
+      const used = new Set(this.opening!.discard.cards.map((card) => card.rank));
+      const card = mostValuable(hand.filter((c) => !used.has(c.rank))) ?? hand[0];
+      return { type: "opening_discard", cardId: card.id };
+    }
+    const round = this.round!;
+    if (round.phase === "draw") return { type: "draw_stock" };
+    const hand = round.hands[seat];
+    const card = mostValuable(hand.filter((c) => !isJoker(c, round.jokerRank))) ?? hand[0];
+    return { type: "discard", cardId: card.id };
+  }
+
+  private actingSeat(): PlayerId | null {
+    if (this.status === "opening") return this.openingOrder()[this.opening!.discard.cards.length];
+    if (this.status === "playing") return this.round!.turn;
+    return null;
+  }
 }
 
 export function createRoom(seats: string[], options: RoomOptions): Room {
@@ -248,4 +298,15 @@ function findCard(cards: Card[], id: string): Card {
   const card = cards.find((c) => c.id === id);
   if (card === undefined) throw new Error("CARD_NOT_IN_HAND");
   return card;
+}
+
+function isJoker(card: Card, jokerRank: Rank | null): boolean {
+  return jokerRank !== null && card.rank === jokerRank;
+}
+
+function mostValuable(cards: Card[]): Card | undefined {
+  return cards.reduce<Card | undefined>(
+    (best, card) => (best === undefined || baseValue(card.rank) > baseValue(best.rank) ? card : best),
+    undefined,
+  );
 }

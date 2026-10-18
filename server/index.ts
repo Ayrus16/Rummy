@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { Server } from "socket.io";
 import type { PlayerId } from "../src/rules/opening";
 import { verifyDiscordUserId } from "./auth";
-import { createRoom, type Intent, type Room } from "./room";
+import { BOT_PREFIX, createRoom, type Intent, type Room } from "./room";
 import { viewFor } from "./view";
 
 const PORT = Number(process.env.PORT ?? 4000);
@@ -33,6 +33,15 @@ async function broadcast(channelId: string): Promise<void> {
   }
 }
 
+// Tepat 4 kursi. Kursi kosong diisi bot hanya jika diminta (untuk testing).
+function fillSeats(participantIds: string[], addBots: boolean): string[] {
+  if (participantIds.length > 4) throw new Error("TOO_MANY_PLAYERS");
+  if (participantIds.length === 4) return participantIds;
+  if (!addBots) throw new Error("NOT_ENOUGH_PLAYERS");
+  const bots = Array.from({ length: 4 - participantIds.length }, (_, i) => `${BOT_PREFIX}${i + 1}`);
+  return [...participantIds, ...bots];
+}
+
 function errorCode(err: unknown): string {
   return err instanceof Error ? err.message : "UNKNOWN";
 }
@@ -44,18 +53,18 @@ io.on("connection", (socket) => {
   socket.on(
     "join_channel",
     async (
-      payload: { channelId: string; accessToken: string; participantIds: string[] },
+      payload: { channelId: string; accessToken: string; participantIds: string[]; addBots?: boolean },
       ack: (res: object) => void,
     ) => {
       try {
         const userId = await verifyDiscordUserId(payload.accessToken);
         let room = rooms.get(payload.channelId);
         if (room === undefined || room.status === "finished" || room.status === "cancelled") {
-          if (payload.participantIds.length !== 4) throw new Error("NOT_ENOUGH_PLAYERS");
           // Pembuat ruang harus termasuk dalam daftar peserta, supaya tidak membuat ruang untuk orang lain.
           if (!payload.participantIds.includes(userId)) throw new Error("NOT_SEATED");
+          const seats = fillSeats(payload.participantIds, payload.addBots === true);
           const channelId = payload.channelId;
-          room = createRoom(payload.participantIds, {
+          room = createRoom(seats, {
             target: TARGET_SCORE,
             disconnectTimeoutMs: DISCONNECT_TIMEOUT_MS,
             onChange: () => void broadcast(channelId),

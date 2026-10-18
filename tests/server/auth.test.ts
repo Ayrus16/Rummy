@@ -6,7 +6,7 @@ afterEach(() => {
 });
 
 test("returns the Discord user id for a valid token", async () => {
-  const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => Response.json({ id: "123" }));
+  const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ id: "123" }));
   vi.stubGlobal("fetch", fetchMock);
   await expect(verifyDiscordUserId("tok")).resolves.toBe("123");
   expect(fetchMock.mock.calls[0][1]).toEqual({ headers: { Authorization: "Bearer tok" } });

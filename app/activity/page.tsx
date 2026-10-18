@@ -51,9 +51,12 @@ export default function ActivityPage() {
         setError(null);
       });
 
+      // Mode testing: ?bots=1 mengisi kursi kosong dengan bot.
+      const addBots = new URLSearchParams(window.location.search).get("bots") === "1";
+
       // Dipanggil ulang setiap kali tersambung, termasuk setelah reconnect.
       const tryJoin = async () => {
-        const result: Ack = await joinChannel(socketConnection, session);
+        const result: Ack = await joinChannel(socketConnection, session, addBots);
         if (cancelled) return;
         if (result.ok) {
           setStatus("");
