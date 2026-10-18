@@ -355,7 +355,10 @@ export class Room {
   private endRound(): void {
     const round = this.round!;
     this.status = "scoring";
-    this.scoringArrangement = round.hands.map((hand) => handArrangement(hand, round.jokerRank));
+    // Kombinasi di tangan hanya dihitung plus kalau pemain sudah pernah menurunkan seri murni. Selebihnya minus semua.
+    this.scoringArrangement = round.hands.map((hand, seat) =>
+      round.laidPureSeri[seat] ? handArrangement(hand, round.jokerRank) : { melds: [], leftover: [...hand] },
+    );
     this.scoringConfirmed = [false, false, false, false];
     this.seats.forEach((seatId, seat) => {
       if (seatId.startsWith(BOT_PREFIX)) this.scoringConfirmed[seat] = true;
@@ -372,6 +375,7 @@ export class Room {
   private handleScoring(seat: PlayerId, intent: Intent): void {
     if (intent.type !== "confirm") throw new Error("WRONG_PHASE");
     if (this.scoringConfirmed[seat]) throw new Error("ALREADY_CONFIRMED");
+    if (!this.round!.laidPureSeri[seat] && intent.melds.length > 0) throw new Error("PURE_SERI_REQUIRED");
     const hand = this.round!.hands[seat];
     const melds = intent.melds.map((ids) => ids.map((id) => findCard(hand, id)));
     const arrangement = validateArrangement(hand, melds, this.round!.jokerRank);

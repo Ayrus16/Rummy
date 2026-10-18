@@ -226,3 +226,57 @@
   text-align: center;
   border-bottom: 1px solid rgba(255, 255, 255, 0.15);
 }
+
+.resultGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.resultSeat {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.resultSeat .card {
+  width: 40px;
+  height: 56px;
+  font-size: 0.8em;
+  padding: 0;
+}
+
+.resultHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 1.05em;
+  margin-bottom: 6px;
+}
+
+.resultSubtitle {
+  font-size: 0.8em;
+  opacity: 0.75;
+  margin-top: 6px;
+}
+
+.resultLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.leftCard {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}

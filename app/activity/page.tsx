@@ -4,20 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import type { Intent } from "../../server/room";
 import type { PlayerView } from "../../server/view";
 import { connectDiscord } from "../../src/client/discord";
+import { messageForError } from "../../src/client/messages";
 import { connectRoom, type RoomConnection } from "../../src/client/realtime";
 import { Table } from "./Table";
 import styles from "./Table.module.css";
 
-function messageFor(error: string): string {
-  switch (error) {
-    case "NOT_ENOUGH_PLAYERS":
-      return "Menunggu 4 pemain di Activity ini...";
-    case "NOT_SEATED":
-      return "Kamu tidak terdaftar sebagai pemain di sesi ini.";
-    default:
-      return error;
-  }
-}
 
 export default function ActivityPage() {
   const [view, setView] = useState<PlayerView | null>(null);
@@ -46,7 +37,7 @@ export default function ActivityPage() {
           setView(next);
           setError(null);
         },
-        onError: (message) => setError(messageFor(message)),
+        onError: (message) => setError(messageForError(message)),
         onStatus: setStatus,
       });
     }

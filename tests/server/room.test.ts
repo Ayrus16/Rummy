@@ -153,7 +153,8 @@ test("an all-bot room keeps playing rounds without stalling", () => {
     vi.advanceTimersByTime(1);
     room.tick();
   }
-  expect(room.status).toBe("playing");
+  // Bisa berhenti di tengah pembukaan atau permainan, yang penting tetap berjalan.
+  expect(["opening", "playing"]).toContain(room.status);
   expect(room.session.rounds).toBeGreaterThan(10);
 });
 

@@ -168,7 +168,7 @@ export function Table({ view, error, onIntent }: TableProps) {
 
   // Kartu terpilih dari sampah bisa dijadikan kombinasi baru kalau sah.
   const selectedLeftover = leftoverCards.filter((card) => selected.includes(card.id));
-  const canGroup = scoringPhase && !myConfirmed && selectedLeftover.length >= 3 &&
+  const canGroup = scoringPhase && !myConfirmed && (board?.laidPureSeri[view.you] ?? false) && selectedLeftover.length >= 3 &&
     classify(selectedLeftover, jokerRank).kind !== "invalid";
   const waiting = scoringPhase
     ? view.scoring!.confirmed.map((ok, seat) => (ok ? null : `P${seat + 1}`)).filter(Boolean).join(", ")
@@ -230,35 +230,40 @@ export function Table({ view, error, onIntent }: TableProps) {
       {view.roundDetail !== null && !scoringPhase && (
         <section className={styles.detail}>
           <div className={styles.label}>Hasil ronde terakhir</div>
-          {view.roundDetail.map((detail, seat) => (
-            <div key={seat} className={styles.detailSeat}>
-              <strong>
-                P{seat + 1}: {signed(detail.score)}
-              </strong>
-              {detail.melds.map((meld, i) => (
-                <div key={i} className={styles.row}>
-                  <div className={styles.meld}>
-                    {meld.map((card) => (
-                      <CardFace key={card.id} card={card} disabled />
+          <div className={styles.resultGrid}>
+            {view.roundDetail.map((detail, seat) => (
+              <div key={seat} className={styles.resultSeat}>
+                <div className={styles.resultHead}>
+                  <strong>P{seat + 1}</strong>
+                  <span className={detail.score < 0 ? styles.minus : styles.plus}>{signed(detail.score)}</span>
+                </div>
+                {detail.melds.length > 0 && <div className={styles.resultSubtitle}>Kombinasi</div>}
+                {detail.melds.map((meld, i) => (
+                  <div key={i} className={styles.resultLine}>
+                    <div className={styles.cards}>
+                      {meld.map((card) => (
+                        <CardFace key={card.id} card={card} disabled />
+                      ))}
+                    </div>
+                    <span className={detail.meldValues[i] < 0 ? styles.minus : styles.plus}>{signed(detail.meldValues[i])}</span>
+                  </div>
+                ))}
+                {detail.leftover.length > 0 && <div className={styles.resultSubtitle}>Sampah</div>}
+                {detail.leftover.length > 0 && (
+                  <div className={styles.cards}>
+                    {detail.leftover.map((card, i) => (
+                      <span key={card.id} className={styles.leftCard}>
+                        <CardFace card={card} disabled />
+                        <span className={styles.minus}>{signed(detail.leftoverValues[i])}</span>
+                      </span>
                     ))}
                   </div>
-                  <span className={styles.plus}>{signed(detail.meldValues[i])}</span>
-                </div>
-              ))}
-              {detail.leftover.length > 0 && (
-                <div className={styles.row}>
-                  {detail.leftover.map((card, i) => (
-                    <span key={card.id} className={styles.leftover}>
-                      <CardFace card={card} disabled />
-                      <span className={styles.minus}>{signed(detail.leftoverValues[i])}</span>
-                    </span>
-                  ))}
-                </div>
-              )}
-              {detail.bonus !== 0 && <div>Bonus closed: {signed(detail.bonus)}</div>}
-              {detail.penalty !== 0 && <div>Penalti joker: {signed(detail.penalty)}</div>}
-            </div>
-          ))}
+                )}
+                {detail.bonus !== 0 && <div className={styles.resultLine}>Bonus closed <span className={styles.plus}>{signed(detail.bonus)}</span></div>}
+                {detail.penalty !== 0 && <div className={styles.resultLine}>Penalti joker <span className={styles.minus}>{signed(detail.penalty)}</span></div>}
+              </div>
+            ))}
+          </div>
         </section>
       )}
 
@@ -389,6 +394,9 @@ export function Table({ view, error, onIntent }: TableProps) {
       {scoringPhase && !myConfirmed ? (
         <section className={styles.hand}>
           <div className={styles.label}>Kombinasimu (kartu yang tidak masuk kombinasi dihitung minus)</div>
+          {!(board?.laidPureSeri[view.you] ?? false) && (
+            <p className={styles.notice}>Kamu belum menurunkan seri murni, jadi semua kartumu dihitung minus.</p>
+          )}
           {groups.map((group, index) => (
             <div key={index} className={styles.row}>
               {group.map((id) => {
