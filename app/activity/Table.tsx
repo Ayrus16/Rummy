@@ -78,6 +78,7 @@ export function Table({ view, error, onIntent }: TableProps) {
       <header className={styles.header}>
         <div>
           Target {view.target} · Ronde {view.rounds}
+          {board?.jokerRank && <> · Joker: {board.jokerRank}</>}
         </div>
         <div className={styles.totals}>
           {view.seats.map((_, seat) => (

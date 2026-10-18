@@ -83,3 +83,20 @@ test("joker discarded in opening penalizes discarder", () => {
   expect(out.penalties[1]).toBe(-50);
   expect(out.discard.closedIndex).toBe(1);
 });
+
+test("discarded joker leaves two jokers in play", () => {
+  // Penentu 10D keluar dari cangkulan (rng 0.5 memilih indeks 1). 10H dibuang di putaran pertama,
+  // jadi tinggal 10S dan 10C yang masih bermain.
+  const s: OpeningState = {
+    hands: [[c("10S")], [c("10C")], [], []],
+    stock: [c("9C"), c("10D"), c("KH")],
+    discard: { cards: [c("JS"), c("10H"), c("QD"), c("3C")], closedIndex: null },
+    jokerRank: null,
+    penalties: [0, 0, 0, 0],
+  };
+  const out = resolveJoker(s, () => 0.5);
+  expect(out.jokerRank).toBe("10");
+  expect(out.stock.some((card) => card.id === "10D")).toBe(false);
+  const jokersInPlay = [...out.hands.flat(), ...out.stock].filter((card) => card.rank === "10");
+  expect(jokersInPlay.length).toBe(2);
+});
