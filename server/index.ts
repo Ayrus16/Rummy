@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
 import type { PlayerId } from "../src/rules/opening";
@@ -7,8 +6,9 @@ import { viewFor } from "./view";
 
 const PORT = Number(process.env.PORT ?? 4000);
 const DISCONNECT_TIMEOUT_MS = Number(process.env.DISCONNECT_TIMEOUT_MS ?? 60_000);
-const DEFAULT_TARGET = 1000;
+const TARGET_SCORE = 1000;
 
+// Satu ruang per voice channel. Nama ruang Socket.IO memakai channelId yang sama.
 const rooms = new Map<string, Room>();
 
 const httpServer = createServer();
@@ -16,16 +16,16 @@ const io = new Server(httpServer, {
   cors: { origin: "*" },
 });
 
-// Identitas pemain masih dari klien (userId). Verifikasi Discord dikerjakan di Task 9.
+// Identitas pemain masih dari klien (userId). Verifikasi token Discord belum dipasang di server.
 interface SocketData {
-  roomId?: string;
+  channelId?: string;
   seat?: PlayerId;
 }
 
-async function broadcast(roomId: string): Promise<void> {
-  const room = rooms.get(roomId);
+async function broadcast(channelId: string): Promise<void> {
+  const room = rooms.get(channelId);
   if (room === undefined) return;
-  const sockets = await io.in(roomId).fetchSockets();
+  const sockets = await io.in(channelId).fetchSockets();
   for (const socket of sockets) {
     const data = socket.data as SocketData;
     if (data.seat === undefined) continue;
@@ -40,40 +40,46 @@ function errorCode(err: unknown): string {
 io.on("connection", (socket) => {
   socket.emit("hello", { message: "server ready" });
 
-  socket.on("create_room", (payload: { seats: string[]; target?: number }, ack: (res: object) => void) => {
-    try {
-      const roomId = randomUUID();
-      const room = createRoom(payload.seats, {
-        target: payload.target ?? DEFAULT_TARGET,
-        disconnectTimeoutMs: DISCONNECT_TIMEOUT_MS,
-        onChange: () => void broadcast(roomId),
-      });
-      rooms.set(roomId, room);
-      ack({ ok: true, roomId });
-    } catch (err) {
-      ack({ ok: false, error: errorCode(err) });
-    }
-  });
+  // Kursi diisi dari anggota Activity yang dikirim klien. Harus tepat 4 orang.
+  socket.on(
+    "join_channel",
+    (
+      payload: { channelId: string; userId: string; participantIds: string[] },
+      ack: (res: object) => void,
+    ) => {
+      try {
+        let room = rooms.get(payload.channelId);
+        if (room === undefined || room.status === "finished" || room.status === "cancelled") {
+          if (payload.participantIds.length !== 4) throw new Error("NOT_ENOUGH_PLAYERS");
+          const channelId = payload.channelId;
+          room = createRoom(payload.participantIds, {
+            target: TARGET_SCORE,
+            disconnectTimeoutMs: DISCONNECT_TIMEOUT_MS,
+            onChange: () => void broadcast(channelId),
+          });
+          rooms.set(channelId, room);
+        }
 
-  socket.on("join_room", (payload: { roomId: string; userId: string }, ack: (res: object) => void) => {
-    const room = rooms.get(payload.roomId);
-    if (room === undefined) return ack({ ok: false, error: "ROOM_NOT_FOUND" });
-    const seat = room.seats.indexOf(payload.userId);
-    if (seat === -1) return ack({ ok: false, error: "NOT_SEATED" });
+        const seat = room.seats.indexOf(payload.userId);
+        if (seat === -1) throw new Error("NOT_SEATED");
 
-    const data = socket.data as SocketData;
-    data.roomId = payload.roomId;
-    data.seat = seat as PlayerId;
-    void socket.join(payload.roomId);
-    room.onReconnect(seat as PlayerId);
-    socket.emit("state", viewFor(room, seat as PlayerId));
-    ack({ ok: true });
-  });
+        const data = socket.data as SocketData;
+        data.channelId = payload.channelId;
+        data.seat = seat as PlayerId;
+        void socket.join(payload.channelId);
+        room.onReconnect(seat as PlayerId);
+        socket.emit("state", viewFor(room, seat as PlayerId));
+        ack({ ok: true });
+      } catch (err) {
+        ack({ ok: false, error: errorCode(err) });
+      }
+    },
+  );
 
   socket.on("intent", (intent: Intent, ack: (res: object) => void) => {
     const data = socket.data as SocketData;
-    if (data.roomId === undefined || data.seat === undefined) return ack({ ok: false, error: "NOT_JOINED" });
-    const room = rooms.get(data.roomId);
+    if (data.channelId === undefined || data.seat === undefined) return ack({ ok: false, error: "NOT_JOINED" });
+    const room = rooms.get(data.channelId);
     if (room === undefined) return ack({ ok: false, error: "ROOM_NOT_FOUND" });
     try {
       room.handle(data.seat, intent);
@@ -85,8 +91,8 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     const data = socket.data as SocketData;
-    if (data.roomId === undefined || data.seat === undefined) return;
-    rooms.get(data.roomId)?.onDisconnect(data.seat);
+    if (data.channelId === undefined || data.seat === undefined) return;
+    rooms.get(data.channelId)?.onDisconnect(data.seat);
   });
 });
 
