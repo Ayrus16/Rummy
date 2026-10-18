@@ -1,4 +1,5 @@
 import { baseValue, type Card, type Rank } from "./cards";
+import { HAND_SIZE } from "./deal";
 
 export type PlayerId = 0 | 1 | 2 | 3;
 
@@ -18,22 +19,32 @@ export interface OpeningState {
 
 const JOKER_PENALTY_MULTIPLIER = 10;
 
-// Pemain mengambil satu kartu dari cangkulan lalu membuang satu kartu.
-// Urutan pembuangan harus 0, 1, 2, 3, dan angka buangan tidak boleh sama.
+// Langkah 1 pembukaan: pemain mengambil satu kartu dari cangkulan dan melihatnya.
+// Urutan giliran pembukaan dijaga pemanggil (room), karena pemain pertama tiap ronde bisa berbeda.
+export function openingDraw(state: OpeningState, player: PlayerId): OpeningState {
+  if (state.hands[player].length !== HAND_SIZE) throw new Error("ALREADY_DRAWN");
+  const [drawn, ...stock] = state.stock;
+  return {
+    ...state,
+    stock,
+    hands: state.hands.map((h, seat) => (seat === player ? [...h, drawn] : h)),
+  };
+}
+
+// Langkah 2 pembukaan: pemain membuang satu kartu dari tangannya (setelah openingDraw).
+// Angka buangan pembukaan tidak boleh sama.
 export function openingDiscard(state: OpeningState, player: PlayerId, card: Card): OpeningState {
-  if (state.discard.cards.length !== player) throw new Error("OUT_OF_ORDER");
+  if (state.hands[player].length !== HAND_SIZE + 1) throw new Error("NOT_DRAWN");
   if (state.discard.cards.some((placed) => placed.rank === card.rank)) {
     throw new Error("DUPLICATE_OPENING_RANK");
   }
-  const [drawn, ...stock] = state.stock;
-  const hand = [...state.hands[player], drawn];
+  const hand = state.hands[player];
   const index = hand.findIndex((held) => held.id === card.id);
   if (index === -1) throw new Error("CARD_NOT_IN_HAND");
   const hands = state.hands.map((h, seat) => (seat === player ? hand.filter((_, i) => i !== index) : h));
   return {
     ...state,
     hands,
-    stock,
     discard: { ...state.discard, cards: [...state.discard.cards, card] },
   };
 }

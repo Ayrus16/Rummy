@@ -3,6 +3,7 @@ import { makeDeck, type Card, type Rank } from "../../src/rules/cards";
 import { deal } from "../../src/rules/deal";
 import {
   openingDiscard,
+  openingDraw,
   resolveJoker,
   type OpeningState,
 } from "../../src/rules/opening";
@@ -24,11 +25,16 @@ function state(hands: Card[][], stock: Card[]): OpeningState {
 test("first-round discards must differ in rank", () => {
   // Pemain 0 membuang J, lalu pemain 1 mencoba membuang J juga.
   let s = state(
-    [[c("2C")], [c("3C")], [c("4C")], [c("5C")]],
+    [
+      ["2S", "3S", "4S", "5S", "6S", "7S", "8S"].map(c),
+      ["2H", "3H", "4H", "5H", "6H", "7H", "8H"].map(c),
+      ["2D", "3D", "4D", "5D", "6D", "7D", "8D"].map(c),
+      ["9S", "10S", "QS", "KS", "AS", "9H", "10H"].map(c),
+    ],
     [c("JS"), c("JH"), c("6C"), c("7C"), c("8C")],
   );
-  s = openingDiscard(s, 0, c("JS"));
-  expect(() => openingDiscard(s, 1, c("JH"))).toThrow("DUPLICATE_OPENING_RANK");
+  s = openingDiscard(openingDraw(s, 0), 0, c("JS"));
+  expect(() => openingDiscard(openingDraw(s, 1), 1, c("JH"))).toThrow("DUPLICATE_OPENING_RANK");
 });
 
 test("penentu is removed and the other three of its rank become jokers", () => {
@@ -37,9 +43,9 @@ test("penentu is removed and the other three of its rank become jokers", () => {
   const { hands, stock } = deal(deck);
   let s = state(hands, stock);
   for (let p = 0; p < 4; p++) {
-    const drawn = s.stock[0];
+    s = openingDraw(s, p as 0 | 1 | 2 | 3);
     const used = new Set(s.discard.cards.map((card) => card.rank));
-    const pick = [...s.hands[p], drawn].find((card) => !used.has(card.rank));
+    const pick = s.hands[p].find((card) => !used.has(card.rank));
     s = openingDiscard(s, p as 0 | 1 | 2 | 3, pick!);
   }
   const before = s.stock.length;
@@ -54,9 +60,9 @@ test("stock has 19 cards after opening", () => {
   const { hands, stock } = deal(makeDeck());
   let s = state(hands, stock);
   for (let p = 0; p < 4; p++) {
-    const drawn = s.stock[0];
+    s = openingDraw(s, p as 0 | 1 | 2 | 3);
     const used = new Set(s.discard.cards.map((card) => card.rank));
-    const pick = [...s.hands[p], drawn].find((card) => !used.has(card.rank));
+    const pick = s.hands[p].find((card) => !used.has(card.rank));
     s = openingDiscard(s, p as 0 | 1 | 2 | 3, pick!);
   }
   s = resolveJoker(s, () => 0);
