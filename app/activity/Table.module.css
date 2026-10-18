@@ -86,7 +86,7 @@
 .row {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px;
+  gap: 6px;
 }
 
 .card {
@@ -285,8 +285,8 @@
 /* Layar kecil (HP di dalam Discord). Kartu dan teks dikecilkan, dan bagian meja turun ke baris berikutnya. */
 @media (max-width: 600px) {
   .page {
-    gap: 12px;
-    padding: 10px;
+    gap: 18px;
+    padding: 14px;
   }
 
   .header {
@@ -313,15 +313,15 @@
   }
 
   .row {
-    gap: 2px;
+    gap: 6px;
     justify-content: center;
   }
 
   .card {
-    min-width: 38px;
-    min-height: 54px;
+    min-width: 46px;
+    min-height: 66px;
     padding: 4px;
-    font-size: 0.85rem;
+    font-size: 0.95rem;
   }
 
   .resultSeat .card {
@@ -360,7 +360,7 @@
 }
 
 .center {
-  font-size: 1.6em;
+  font-size: 1.1em;
   line-height: 1;
 }
 

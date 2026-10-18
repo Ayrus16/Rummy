@@ -63,18 +63,18 @@ function CardFace({
   );
 }
 
-// Baris kartu yang menumpuk otomatis: rapat seperti biasa, dan kartu saling menutupi hanya kalau ruangnya sempit.
+// Baris kartu yang menumpuk otomatis: berjarak normal kalau muat, dan kartu saling menutupi hanya kalau ruangnya sempit.
 function FitRow({ count, children }: { count: number; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [overlap, setOverlap] = useState(0);
+  // Jarak antarkartu: 6px kalau muat, negatif (tumpuk) kalau ruangnya kurang.
+  const [spacing, setSpacing] = useState(6);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     const measure = () => {
       const first = el.firstElementChild as HTMLElement | null;
-      if (!first || count < 2) return setOverlap(0);
-      const needed = count * first.offsetWidth - el.clientWidth;
-      setOverlap(Math.max(0, Math.ceil(needed / (count - 1))));
+      if (!first || count < 2) return setSpacing(6);
+      setSpacing(Math.min(6, Math.floor((el.clientWidth - count * first.offsetWidth) / (count - 1))));
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -84,7 +84,7 @@ function FitRow({ count, children }: { count: number; children: ReactNode }) {
   return (
     <div ref={ref} className={styles.fitRow}>
       {Children.map(children, (child, i) => (
-        <div className={styles.slot} style={{ marginLeft: i === 0 ? 0 : -overlap }}>
+        <div className={styles.slot} style={{ marginLeft: i === 0 ? 0 : spacing }}>
           {child}
         </div>
       ))}
