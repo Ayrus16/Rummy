@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { Server } from "socket.io";
 import type { PlayerId } from "../src/rules/opening";
+import { verifyDiscordUserId } from "./auth";
 import { createRoom, type Intent, type Room } from "./room";
 import { viewFor } from "./view";
 
@@ -16,7 +17,6 @@ const io = new Server(httpServer, {
   cors: { origin: "*" },
 });
 
-// Identitas pemain masih dari klien (userId). Verifikasi token Discord belum dipasang di server.
 interface SocketData {
   channelId?: string;
   seat?: PlayerId;
@@ -40,17 +40,20 @@ function errorCode(err: unknown): string {
 io.on("connection", (socket) => {
   socket.emit("hello", { message: "server ready" });
 
-  // Kursi diisi dari anggota Activity yang dikirim klien. Harus tepat 4 orang.
+  // Identitas diverifikasi lewat token Discord. Kursi diisi dari anggota Activity yang dikirim klien.
   socket.on(
     "join_channel",
-    (
-      payload: { channelId: string; userId: string; participantIds: string[] },
+    async (
+      payload: { channelId: string; accessToken: string; participantIds: string[] },
       ack: (res: object) => void,
     ) => {
       try {
+        const userId = await verifyDiscordUserId(payload.accessToken);
         let room = rooms.get(payload.channelId);
         if (room === undefined || room.status === "finished" || room.status === "cancelled") {
           if (payload.participantIds.length !== 4) throw new Error("NOT_ENOUGH_PLAYERS");
+          // Pembuat ruang harus termasuk dalam daftar peserta, supaya tidak membuat ruang untuk orang lain.
+          if (!payload.participantIds.includes(userId)) throw new Error("NOT_SEATED");
           const channelId = payload.channelId;
           room = createRoom(payload.participantIds, {
             target: TARGET_SCORE,
@@ -60,7 +63,7 @@ io.on("connection", (socket) => {
           rooms.set(channelId, room);
         }
 
-        const seat = room.seats.indexOf(payload.userId);
+        const seat = room.seats.indexOf(userId);
         if (seat === -1) throw new Error("NOT_SEATED");
 
         const data = socket.data as SocketData;

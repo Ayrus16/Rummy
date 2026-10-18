@@ -2,7 +2,7 @@ import { DiscordSDK } from "@discord/embedded-app-sdk";
 
 export interface DiscordSession {
   channelId: string;
-  userId: string;
+  accessToken: string;
   participantIds: string[];
 }
 
@@ -37,7 +37,7 @@ export async function connectDiscord(): Promise<DiscordSession> {
 
   return {
     channelId: sdk.channelId,
-    userId: auth.user.id,
+    accessToken: auth.access_token,
     participantIds: participants.map((p) => p.id),
   };
 }
