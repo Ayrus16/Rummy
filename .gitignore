@@ -45,3 +45,5 @@ next-env.d.ts
 # cloudflare worker (wrangler)
 .wrangler
 .dev.vars
+
+.vercel
