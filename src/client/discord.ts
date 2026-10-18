@@ -22,8 +22,8 @@ export async function connectDiscord(): Promise<DiscordSession> {
     scope: ["identify"],
   });
 
-  // Discord meneruskan /.proxy/* ke server kita (lihat URL mapping di Developer Portal).
-  const tokenResponse = await fetch("/.proxy/api/token", {
+  // Root mapping "/" di Developer Portal meneruskan /api/token ke server Next.
+  const tokenResponse = await fetch("/api/token", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ code }),

@@ -7,10 +7,13 @@ export interface Ack {
   error?: string;
 }
 
+// NEXT_PUBLIC_SOCKET_URL berisi origin saja. Path dipisah karena Socket.IO menganggap
+// path di URL sebagai namespace. Path ini juga dipakai server dan cocok dengan mapping /ws.
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL ?? "http://localhost:4000";
+export const SOCKET_PATH = "/ws/socket.io";
 
 export function connectSocket(): Socket {
-  return io(SOCKET_URL, { transports: ["websocket"] });
+  return io(SOCKET_URL, { path: SOCKET_PATH, transports: ["websocket"] });
 }
 
 export function joinChannel(socket: Socket, session: DiscordSession, addBots: boolean): Promise<Ack> {

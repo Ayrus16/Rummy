@@ -14,6 +14,7 @@ const rooms = new Map<string, Room>();
 
 const httpServer = createServer();
 const io = new Server(httpServer, {
+  path: "/ws/socket.io",
   cors: { origin: "*" },
 });
 
