@@ -1,7 +1,5 @@
 import { DiscordSDK } from "@discord/embedded-app-sdk";
 
-const REDIRECT_URI = "https://remi-indo.vercel.app";
-
 export interface DiscordSession {
   // ID peluncuran Activity. Baru untuk setiap peluncuran, dan dipakai server untuk memverifikasi peserta.
   instanceId: string;
@@ -27,17 +25,14 @@ export async function connectDiscord(onStep: (message: string) => void): Promise
     await sdk.ready();
 
     at("Menunggu izin di Discord (authorize)...");
-    // Discord menolak request tanpa redirect_uri. Nilainya harus sama dengan yang terdaftar di OAuth2 -> Redirects.
-    // Tipe SDK tidak memuat field ini, jadi request disimpan di variabel dulu (tidak kena cek properti berlebih).
-    const request: Parameters<typeof sdk.commands.authorize>[0] & { redirect_uri: string } = {
+    // Flow RPC tidak menerima redirect_uri di request. Redirect cukup terdaftar di OAuth2 -> Redirects.
+    const { code } = await sdk.commands.authorize({
       client_id: clientId,
       response_type: "code",
       state: "",
       prompt: "none",
       scope: ["identify"],
-      redirect_uri: REDIRECT_URI,
-    };
-    const { code } = await sdk.commands.authorize(request);
+    });
 
     at("Menukar kode menjadi token...");
     // Root mapping "/" di Developer Portal meneruskan /api/token ke server Next.
