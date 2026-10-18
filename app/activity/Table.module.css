@@ -286,7 +286,8 @@
 @media (max-width: 600px) {
   .page {
     gap: 18px;
-    padding: 14px;
+    /* Jarak dari bezel atas HP, termasuk area aman (poni atau notch). */
+    padding: calc(env(safe-area-inset-top, 0px) + 36px) 14px 14px;
   }
 
   .header {
@@ -329,7 +330,7 @@
   }
 
   .center {
-    font-size: 1.1em;
+    font-size: 0.8em;
   }
 
   .resultSeat .card {
