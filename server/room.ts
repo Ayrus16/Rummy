@@ -27,7 +27,9 @@ export type Intent =
   | { type: "draw_stock" }
   | { type: "pickup"; targetId: string; handIds: string[] }
   | { type: "lay_down"; cardIds: string[] }
-  | { type: "discard"; cardId: string };
+  | { type: "discard"; cardId: string }
+  // Ditangani di worker (membuat ruang baru), bukan di Room.handle.
+  | { type: "reset" };
 
 export type RoomStatus = "opening" | "playing" | "paused" | "cancelled" | "finished";
 

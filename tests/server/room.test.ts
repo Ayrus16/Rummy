@@ -168,3 +168,10 @@ test("bots take their turns and hand the turn back", () => {
   expect(room.board()!.turn).toBe(0);
   expect(room.board()!.phase).toBe("draw");
 });
+
+test("joker is determined as soon as the first round ends", () => {
+  const room = newRoom();
+  playOpening(room);
+  expect(room.board()!.jokerRank).not.toBeNull();
+  expect(room.board()!.stock.length).toBe(19);
+});

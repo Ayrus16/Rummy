@@ -146,8 +146,11 @@ export class Table extends DurableObject<Env> {
   }
 
   private async intent(ws: WebSocket, seat: PlayerId, intent: Intent) {
-    const room = await this.load();
-    if (room === null) return ws.send(JSON.stringify({ type: "error", error: "ROOM_NOT_FOUND" }));
+    const loaded = await this.load();
+    if (loaded === null) return ws.send(JSON.stringify({ type: "error", error: "ROOM_NOT_FOUND" }));
+    // Reset membuat ruang baru dengan kursi yang sama (termasuk bot dan pemain yang sudah masuk).
+    if (intent.type === "reset") return this.commit(createRoom([...loaded.seats], ROOM_OPTIONS));
+    const room = loaded;
     room.tick();
     let error: string | null = null;
     try {

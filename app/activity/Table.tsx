@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ButtonHTMLAttributes } from "react";
 import type { Card } from "../../src/rules/cards";
 import type { Intent } from "../../server/room";
 import type { PlayerView } from "../../server/view";
@@ -13,22 +13,31 @@ interface TableProps {
 }
 
 const SUIT_SYMBOL: Record<Card["suit"], string> = { S: "♠", H: "♥", D: "♦", C: "♣" };
+const SUIT_ORDER: Card["suit"][] = ["S", "H", "D", "C"];
+const RANK_ORDER = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
 
 function cardLabel(card: Card): string {
   return `${card.rank}${SUIT_SYMBOL[card.suit]}`;
 }
+
+function bySuitThenRank(a: Card, b: Card): number {
+  return SUIT_ORDER.indexOf(a.suit) - SUIT_ORDER.indexOf(b.suit) || RANK_ORDER.indexOf(a.rank) - RANK_ORDER.indexOf(b.rank);
+}
+
+type DragProps = Pick<ButtonHTMLAttributes<HTMLButtonElement>, "draggable" | "onDragStart" | "onDragOver" | "onDrop" | "onDragEnd">;
 
 function CardFace({
   card,
   selected,
   onClick,
   disabled,
+  ...drag
 }: {
   card: Card;
   selected?: boolean;
   onClick?: () => void;
   disabled?: boolean;
-}) {
+} & DragProps) {
   const red = card.suit === "H" || card.suit === "D";
   return (
     <button
@@ -36,15 +45,34 @@ function CardFace({
       className={`${styles.card} ${red ? styles.red : ""} ${selected ? styles.selected : ""}`}
       onClick={onClick}
       disabled={disabled}
+      {...drag}
     >
       {cardLabel(card)}
     </button>
   );
 }
 
+function Melds({ melds }: { melds: Card[][] }) {
+  return (
+    <div className={styles.row}>
+      {melds.map((meld, i) => (
+        <div key={i} className={styles.meld}>
+          {meld.map((card) => (
+            <CardFace key={card.id} card={card} disabled />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function Table({ view, error, onIntent }: TableProps) {
   const [selected, setSelected] = useState<string[]>([]);
   const [pickupTarget, setPickupTarget] = useState<string | null>(null);
+  // Urutan tampilan kartu di tangan. Hanya di klien, tidak dikirim ke server.
+  const [order, setOrder] = useState<string[]>([]);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
 
   const board = view.board;
   const myTurn = board !== null && board.turn === view.you;
@@ -53,6 +81,13 @@ export function Table({ view, error, onIntent }: TableProps) {
   const discardPhase = board?.phase === "discard";
   // Pembukaan memakai status "opening", permainan memakai "playing". Keduanya boleh bertindak saat gilirannya.
   const playable = board !== null && (view.status === "opening" || view.status === "playing") && myTurn;
+
+  // Kartu yang belum punya posisi (baru datang) ditaruh di belakang, sesuai urutan dari server.
+  const handIds = [
+    ...order.filter((id) => view.hand.some((card) => card.id === id)),
+    ...view.hand.map((card) => card.id).filter((id) => !order.includes(id)),
+  ];
+  const hand = handIds.map((id) => view.hand.find((card) => card.id === id)!);
 
   function toggle(id: string) {
     setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
@@ -66,6 +101,23 @@ export function Table({ view, error, onIntent }: TableProps) {
   function send(intent: Intent) {
     onIntent(intent);
     clearSelection();
+  }
+
+  function moveBefore(dragged: string, target: string) {
+    if (dragged === target) return;
+    const ids = handIds.filter((id) => id !== dragged);
+    ids.splice(ids.indexOf(target), 0, dragged);
+    setOrder(ids);
+  }
+
+  function resetClicked() {
+    if (!confirmReset) {
+      setConfirmReset(true);
+      return;
+    }
+    setConfirmReset(false);
+    clearSelection();
+    onIntent({ type: "reset" });
   }
 
   // Kartu yang bisa dipakai untuk menurunkan seri murni atau membuang.
@@ -95,6 +147,12 @@ export function Table({ view, error, onIntent }: TableProps) {
       {view.status === "finished" && (
         <p className={styles.notice}>Pemenang: P{(view.winner ?? 0) + 1}</p>
       )}
+      {view.status === "opening" && view.lastRoundScores !== null && (
+        <p className={styles.notice}>
+          Skor ronde terakhir:{" "}
+          {view.lastRoundScores.map((score, seat) => `P${seat + 1} ${score > 0 ? "+" : ""}${score}`).join(" · ")}
+        </p>
+      )}
       {error && <p className={styles.error}>{error}</p>}
 
       <section className={styles.opponents}>
@@ -102,6 +160,7 @@ export function Table({ view, error, onIntent }: TableProps) {
           seat === view.you ? null : (
             <div key={seat} className={styles.opponent}>
               P{seat + 1}: {count} kartu
+              {board && board.table[seat].length > 0 && <Melds melds={board.table[seat]} />}
             </div>
           ),
         )}
@@ -185,19 +244,41 @@ export function Table({ view, error, onIntent }: TableProps) {
         )}
       </section>
 
+      {board && board.table[view.you].length > 0 && (
+        <section className={styles.hand}>
+          <div className={styles.label}>Kombinasi yang kamu turunkan</div>
+          <Melds melds={board.table[view.you]} />
+        </section>
+      )}
+
       <section className={styles.hand}>
-        <div className={styles.label}>Kartumu</div>
+        <div className={styles.label}>
+          Kartumu{" "}
+          <button type="button" className={styles.tool} onClick={() => setOrder([...view.hand].sort(bySuitThenRank).map((card) => card.id))}>
+            Urutkan
+          </button>
+        </div>
         <div className={styles.row}>
-          {view.hand.map((card) => (
+          {hand.map((card) => (
             <CardFace
               key={card.id}
               card={card}
               selected={selected.includes(card.id)}
-              disabled={!playable}
-              onClick={() => toggle(card.id)}
+              onClick={() => playable && toggle(card.id)}
+              draggable
+              onDragStart={() => setDragId(card.id)}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={() => dragId !== null && moveBefore(dragId, card.id)}
+              onDragEnd={() => setDragId(null)}
             />
           ))}
         </div>
+      </section>
+
+      <section className={styles.actions}>
+        <button type="button" className={styles.reset} onClick={resetClicked}>
+          {confirmReset ? "Klik lagi untuk reset game" : "Reset game"}
+        </button>
       </section>
     </main>
   );
