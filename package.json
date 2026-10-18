@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "worker:dev": "wrangler dev -c worker/wrangler.jsonc",
-    "worker:deploy": "wrangler deploy -c worker/wrangler.jsonc"
+    "worker:deploy": "wrangler deploy -c worker/wrangler.jsonc",
+    "worker:secret": "wrangler secret put DISCORD_BOT_TOKEN -c worker/wrangler.jsonc"
   },
   "dependencies": {
     "@discord/embedded-app-sdk": "^2.5.0",

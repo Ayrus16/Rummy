@@ -27,7 +27,7 @@ Di luar Discord, isi `NEXT_PUBLIC_WS_URL=ws://localhost:8788` di `.env.local`. D
 ```bash
 pnpm exec wrangler login
 pnpm worker:deploy
-pnpm exec wrangler secret put DISCORD_BOT_TOKEN   # bot token dari Developer Portal -> Bot
+pnpm worker:secret   # isi dengan bot token dari Developer Portal -> Bot
 ```
 
 `DISCORD_APPLICATION_ID` ada di `worker/wrangler.jsonc`. Bot token wajib karena server memanggil REST Discord untuk memverifikasi peserta instance.
