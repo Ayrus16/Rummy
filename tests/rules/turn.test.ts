@@ -40,12 +40,27 @@ test("draw from stock adds one card to hand and removes it from stock", () => {
   expect(out.drewFrom).toBe("stock");
 });
 
-test("pickup needs a pure seri laid down this round", () => {
+test("first pickup must form a pure seri with the picked card", () => {
+  // Joker = 5. 3H 4H 5H adalah seri sah, tapi memakai joker, jadi bukan seri murni dan pengambilan pertama ditolak.
   const s = round({
+    jokerRank: "5",
     hands: [[c("3H"), c("5H")], [], [], []],
     discard: { cards: [c("AD"), c("4H"), c("9C"), c("2S")], closedIndex: null },
   });
   expect(() => pickFromDiscard(s, 0, c("4H"), [c("3H"), c("5H")])).toThrow("NEED_PURE_SERI");
+});
+
+test("first pickup can form a pure seri together with the picked card", () => {
+  // Contoh pengguna: 2♥ dan 3♥ di tangan, 4♥ di buangan. Seri murni 2-3-4 ♥ turun sekaligus.
+  const s = round({
+    hands: [[c("2H"), c("3H"), c("9S")], [], [], []],
+    discard: { cards: [c("AD"), c("4H"), c("9C")], closedIndex: null },
+  });
+  const out = pickFromDiscard(s, 0, c("4H"), [c("2H"), c("3H")]);
+  expect(out.laidPureSeri[0]).toBe(true);
+  expect(out.table[0].length).toBe(1);
+  expect(ids(out.table[0][0])).toEqual(["2H", "3H", "4H"]);
+  expect(out.phase).toBe("discard");
 });
 
 test("lay down pure seri, then pick up from discard in the same turn", () => {

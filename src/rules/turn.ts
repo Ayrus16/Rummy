@@ -50,24 +50,29 @@ export function pickFromDiscard(
   handCards: Card[],
 ): RoundState {
   assertTurn(state, player, "draw");
-  if (!state.laidPureSeri[player]) throw new Error("NEED_PURE_SERI");
   const taken = pickableFromDiscard(state.discard, target);
   if (taken === null) throw new Error("PICKUP_BLOCKED");
   if (handCards.length < 2) throw new Error("INVALID_MELD");
   const meld = [target, ...handCards];
-  if (classify(meld, state.jokerRank).kind === "invalid") throw new Error("INVALID_MELD");
+  const check = classify(meld, state.jokerRank);
+  if (check.kind === "invalid") throw new Error("INVALID_MELD");
+  // Pengambilan pertama di ronde harus sekaligus membentuk seri murni (kartu yang diambil ikut di dalamnya).
+  // Setelah seri murni sudah turun, pengambilan berikutnya boleh kombinasi apa pun yang sah.
+  if (!state.laidPureSeri[player] && !(check.kind === "seri" && check.pure)) throw new Error("NEED_PURE_SERI");
 
   const remaining = [
     ...removeCards(state.hands[player], handCards),
     ...taken.filter((card) => card.id !== target.id),
   ];
   const table = state.table.map((melds, seat) => (seat === player ? [...melds, meld] : melds));
+  const laidPureSeri = state.laidPureSeri.map((flag, seat) => (seat === player ? true : flag));
   const targetIndex = state.discard.cards.findIndex((card) => card.id === target.id);
   return {
     ...state,
     discard: { ...state.discard, cards: state.discard.cards.slice(0, targetIndex) },
     hands: withHand(state, player, remaining),
     table,
+    laidPureSeri,
     phase: "discard",
     drewFrom: "discard",
   };

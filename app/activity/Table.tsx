@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ButtonHTMLAttributes } from "react";
+import { useEffect, useState, type ButtonHTMLAttributes } from "react";
 import type { Card } from "../../src/rules/cards";
 import type { Intent } from "../../server/room";
 import type { PlayerView } from "../../server/view";
@@ -75,6 +75,27 @@ export function Table({ view, error, onIntent }: TableProps) {
   const [confirmReset, setConfirmReset] = useState(false);
 
   const board = view.board;
+  const jokerRank = board?.jokerRank ?? null;
+  // Joker diumumkan sekali saat ditentukan (popup 5 detik), lalu hilang dan tidak ditampilkan lagi.
+  const [jokerPopup, setJokerPopup] = useState<string | null>(null);
+  const [prevJoker, setPrevJoker] = useState(jokerRank);
+  if (jokerRank !== prevJoker) {
+    setPrevJoker(jokerRank);
+    if (jokerRank !== null) setJokerPopup(jokerRank);
+  }
+  useEffect(() => {
+    if (jokerPopup === null) return;
+    const timer = setTimeout(() => setJokerPopup(null), 5000);
+    return () => clearTimeout(timer);
+  }, [jokerPopup]);
+
+  // Konfirmasi reset kembali normal sendiri kalau tidak diklik lagi dalam beberapa detik.
+  useEffect(() => {
+    if (!confirmReset) return;
+    const timer = setTimeout(() => setConfirmReset(false), 3000);
+    return () => clearTimeout(timer);
+  }, [confirmReset]);
+
   const myTurn = board !== null && board.turn === view.you;
   const inOpening = board?.phase === "opening";
   const drawPhase = board?.phase === "draw";
@@ -127,11 +148,9 @@ export function Table({ view, error, onIntent }: TableProps) {
 
   return (
     <main className={styles.page}>
+      {jokerPopup !== null && <div className={styles.jokerPopup}>Joker ditentukan: {jokerPopup}</div>}
       <header className={styles.header}>
-        <div>
-          Target {view.target} · Ronde {view.rounds}
-          {board?.jokerRank && <> · Joker: {board.jokerRank}</>}
-        </div>
+        <div>Target {view.target} · Ronde {view.rounds}</div>
         <div className={styles.totals}>
           {view.seats.map((_, seat) => (
             <span key={seat} className={seat === view.you ? styles.me : undefined}>

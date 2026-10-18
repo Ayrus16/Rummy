@@ -157,3 +157,18 @@
 .reset {
   margin-top: 8px;
 }
+
+.jokerPopup {
+  position: fixed;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10;
+  padding: 16px 28px;
+  border-radius: 12px;
+  background: #fff8dc;
+  color: #222;
+  font-size: 1.4em;
+  font-weight: 700;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
