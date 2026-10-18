@@ -51,7 +51,8 @@ export function Table({ view, error, onIntent }: TableProps) {
   const inOpening = board?.phase === "opening";
   const drawPhase = board?.phase === "draw";
   const discardPhase = board?.phase === "discard";
-  const playable = board !== null && view.status === "playing" && myTurn;
+  // Pembukaan memakai status "opening", permainan memakai "playing". Keduanya boleh bertindak saat gilirannya.
+  const playable = board !== null && (view.status === "opening" || view.status === "playing") && myTurn;
 
   function toggle(id: string) {
     setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
