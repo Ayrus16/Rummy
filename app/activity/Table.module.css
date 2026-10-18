@@ -86,10 +86,11 @@
 .row {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 2px;
 }
 
 .card {
+  position: relative;
   min-width: 44px;
   min-height: 60px;
   padding: 6px;
@@ -279,4 +280,99 @@
   display: inline-flex;
   align-items: center;
   gap: 2px;
+}
+
+/* Layar kecil (HP di dalam Discord). Kartu dan teks dikecilkan, dan bagian meja turun ke baris berikutnya. */
+@media (max-width: 600px) {
+  .page {
+    gap: 12px;
+    padding: 10px;
+  }
+
+  .header {
+    font-size: 0.95rem;
+  }
+
+  .totals {
+    gap: 8px;
+    font-size: 0.85rem;
+  }
+
+  .opponents {
+    justify-content: center;
+  }
+
+  .middle {
+    gap: 16px;
+  }
+
+  .pile,
+  .discard {
+    flex: 1 1 100%;
+    align-items: center;
+  }
+
+  .row {
+    gap: 2px;
+    justify-content: center;
+  }
+
+  .card {
+    min-width: 38px;
+    min-height: 54px;
+    padding: 4px;
+    font-size: 0.85rem;
+  }
+
+  .resultSeat .card {
+    width: 34px;
+    height: 48px;
+    font-size: 0.7em;
+  }
+
+  .target input {
+    width: 80px;
+  }
+
+  .actions button,
+  .stock {
+    padding: 8px 10px;
+  }
+}
+
+/* Angka dan bunga di pojok kiri atas dan kanan bawah, seperti kartu pada umumnya. */
+.corner {
+  position: absolute;
+  top: 3px;
+  left: 4px;
+  font-size: 0.75em;
+  font-weight: 700;
+  line-height: 1.05;
+  text-align: center;
+}
+
+.cornerBottom {
+  top: auto;
+  left: auto;
+  bottom: 3px;
+  right: 4px;
+  transform: rotate(180deg);
+}
+
+.center {
+  font-size: 1.6em;
+  line-height: 1;
+}
+
+/* Baris kartu tangan. Jarak dan tumpukan diatur FitRow lewat margin di setiap slot. */
+.fitRow {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: center;
+  width: 100%;
+  padding-top: 6px;
+}
+
+.slot {
+  flex: 0 0 auto;
 }

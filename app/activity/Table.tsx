@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ButtonHTMLAttributes } from "react";
+import { Children, useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import type { Card } from "../../src/rules/cards";
 import { classify } from "../../src/rules/combos";
 import type { Intent } from "../../server/room";
@@ -16,10 +16,6 @@ interface TableProps {
 const SUIT_SYMBOL: Record<Card["suit"], string> = { S: "♠", H: "♥", D: "♦", C: "♣" };
 const SUIT_ORDER: Card["suit"][] = ["S", "H", "D", "C"];
 const RANK_ORDER = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
-
-function cardLabel(card: Card): string {
-  return `${card.rank}${SUIT_SYMBOL[card.suit]}`;
-}
 
 function bySuitThenRank(a: Card, b: Card): number {
   return SUIT_ORDER.indexOf(a.suit) - SUIT_ORDER.indexOf(b.suit) || RANK_ORDER.indexOf(a.rank) - RANK_ORDER.indexOf(b.rank);
@@ -52,8 +48,47 @@ function CardFace({
       disabled={disabled}
       {...drag}
     >
-      {cardLabel(card)}
+      <span className={styles.corner}>
+        {card.rank}
+        <br />
+        {SUIT_SYMBOL[card.suit]}
+      </span>
+      <span className={styles.center}>{SUIT_SYMBOL[card.suit]}</span>
+      <span className={`${styles.corner} ${styles.cornerBottom}`}>
+        {card.rank}
+        <br />
+        {SUIT_SYMBOL[card.suit]}
+      </span>
     </button>
+  );
+}
+
+// Baris kartu yang menumpuk otomatis: rapat seperti biasa, dan kartu saling menutupi hanya kalau ruangnya sempit.
+function FitRow({ count, children }: { count: number; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [overlap, setOverlap] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => {
+      const first = el.firstElementChild as HTMLElement | null;
+      if (!first || count < 2) return setOverlap(0);
+      const needed = count * first.offsetWidth - el.clientWidth;
+      setOverlap(Math.max(0, Math.ceil(needed / (count - 1))));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [count]);
+  return (
+    <div ref={ref} className={styles.fitRow}>
+      {Children.map(children, (child, i) => (
+        <div className={styles.slot} style={{ marginLeft: i === 0 ? 0 : -overlap }}>
+          {child}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -409,7 +444,7 @@ export function Table({ view, error, onIntent }: TableProps) {
             </div>
           ))}
           <div className={styles.label}>Sampah</div>
-          <div className={styles.row}>
+          <FitRow count={leftoverCards.length}>
             {leftoverCards.map((card) => (
               <CardFace
                 key={card.id}
@@ -418,7 +453,7 @@ export function Table({ view, error, onIntent }: TableProps) {
                 onClick={() => toggle(card.id)}
               />
             ))}
-          </div>
+          </FitRow>
           <div className={styles.row}>
             <button
               type="button"
@@ -443,7 +478,7 @@ export function Table({ view, error, onIntent }: TableProps) {
               Urutkan
             </button>
           </div>
-          <div className={styles.row}>
+          <FitRow count={hand.length}>
             {hand.map((card) => (
               <CardFace
                 key={card.id}
@@ -457,7 +492,7 @@ export function Table({ view, error, onIntent }: TableProps) {
                 onDragEnd={() => setDragId(null)}
               />
             ))}
-          </div>
+          </FitRow>
         </section>
       )}
 
