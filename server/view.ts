@@ -1,7 +1,8 @@
 import type { Card, Rank } from "../src/rules/cards";
 import type { DiscardPile, PlayerId } from "../src/rules/opening";
 import type { RoundResult } from "../src/rules/turn";
-import type { Room, RoomStatus } from "./room";
+import type { Room, RoomStatus, RoundDetail } from "./room";
+import type { Arrangement } from "../src/rules/scoring";
 
 // Isi cangkulan dan tangan lawan tidak pernah dikirim; hanya jumlahnya.
 export interface PublicBoard {
@@ -26,6 +27,10 @@ export interface PlayerView {
   rounds: number;
   winner: PlayerId | null;
   lastRoundScores: number[] | null;
+  // Rincian kombinasi dan sampah tiap pemain untuk ronde terakhir.
+  roundDetail: RoundDetail[] | null;
+  // Fase penyusunan: siapa yang sudah konfirmasi, dan susunan tangan kita sendiri.
+  scoring: { confirmed: boolean[]; mine: Arrangement | null } | null;
   pausedSeat: PlayerId | null;
   board: PublicBoard | null;
   hand: Card[];
@@ -43,6 +48,11 @@ export function viewFor(room: Room, seat: PlayerId): PlayerView {
     rounds: room.session.rounds,
     winner: room.session.winner,
     lastRoundScores: room.lastRoundScores,
+    roundDetail: room.roundDetail,
+    scoring:
+      room.status === "scoring"
+        ? { confirmed: [...room.scoringConfirmed], mine: room.scoringArrangement?.[seat] ?? null }
+        : null,
     pausedSeat: room.pausedSeat,
     board: board && {
       jokerRank: board.jokerRank,

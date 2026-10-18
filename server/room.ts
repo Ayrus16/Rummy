@@ -8,7 +8,14 @@ import {
   type OpeningState,
   type PlayerId,
 } from "../src/rules/opening";
-import { scoreRound } from "../src/rules/scoring";
+import {
+  handArrangement,
+  loneValue,
+  meldValue,
+  seatScore,
+  validateArrangement,
+  type Arrangement,
+} from "../src/rules/scoring";
 import { applyRound, nextFirstPlayer, type SessionState } from "../src/rules/session";
 import {
   discardCard,
@@ -29,9 +36,22 @@ export type Intent =
   | { type: "lay_down"; cardIds: string[] }
   | { type: "discard"; cardId: string }
   // Ditangani di worker (membuat ruang baru), bukan di Room.handle.
-  | { type: "reset" };
+  | { type: "reset" }
+  // Hanya saat fase penyusunan (status "scoring"): susunan kombinasi tangan lalu konfirmasi.
+  | { type: "confirm"; melds: string[][] };
 
-export type RoomStatus = "opening" | "playing" | "paused" | "cancelled" | "finished";
+export type RoomStatus = "opening" | "playing" | "scoring" | "paused" | "cancelled" | "finished";
+
+// Hasil satu pemain untuk ditampilkan: kombinasi (plus) dan sampah (minus).
+export interface RoundDetail {
+  melds: Card[][];
+  meldValues: number[];
+  leftover: Card[];
+  leftoverValues: number[];
+  penalty: number;
+  bonus: number;
+  score: number;
+}
 
 // Kursi dengan ID berawalan ini dikendalikan server (bot), bukan oleh pemain.
 export const BOT_PREFIX = "bot:";
@@ -50,6 +70,9 @@ export interface RoomSnapshot {
   status: RoomStatus;
   session: SessionState;
   lastRoundScores: number[] | null;
+  roundDetail: RoundDetail[] | null;
+  scoringArrangement: Arrangement[] | null;
+  scoringConfirmed: boolean[];
   pausedSeat: PlayerId | null;
   pausedAt: number | null;
   resumeStatus: RoomStatus;
@@ -79,6 +102,9 @@ const MAX_BOT_STEPS_PER_TICK = 50;
 
 export class Room {
   status: RoomStatus = "opening";
+  roundDetail: RoundDetail[] | null = null;
+  scoringArrangement: Arrangement[] | null = null;
+  scoringConfirmed: boolean[] = [false, false, false, false];
   session: SessionState;
   lastRoundScores: number[] | null = null;
   pausedSeat: PlayerId | null = null;
@@ -116,6 +142,9 @@ export class Room {
     room.opening = snapshot.opening;
     room.round = snapshot.round;
     room.botDueAt = snapshot.botDueAt;
+    room.roundDetail = snapshot.roundDetail;
+    room.scoringArrangement = snapshot.scoringArrangement;
+    room.scoringConfirmed = snapshot.scoringConfirmed;
     return room;
   }
 
@@ -132,6 +161,9 @@ export class Room {
       opening: this.opening,
       round: this.round,
       botDueAt: this.botDueAt,
+      roundDetail: this.roundDetail,
+      scoringArrangement: this.scoringArrangement,
+      scoringConfirmed: [...this.scoringConfirmed],
     };
   }
 
@@ -158,6 +190,8 @@ export class Room {
   // Koneksi pemain putus: sesi terjeda sampai pemain kembali atau batas waktu habis.
   disconnect(seat: PlayerId): void {
     if (this.status === "opening" || this.status === "playing") this.pause(seat, this.now());
+    // Pemain yang putus saat penyusunan dikonfirmasi dengan usulan otomatis, supaya ronde tidak menggantung.
+    if (this.status === "scoring") this.confirmScoring(seat, null);
   }
 
   // Koneksi pemain tersambung lagi: sesi yang terjeda karena pemain ini lanjut.
@@ -168,7 +202,8 @@ export class Room {
   handle(seat: PlayerId, intent: Intent): void {
     if (this.status === "paused") throw new Error("PAUSED");
     if (this.status === "cancelled" || this.status === "finished") throw new Error("ROOM_CLOSED");
-    if (this.status === "opening") this.handleOpening(seat, intent);
+    if (this.status === "scoring") this.handleScoring(seat, intent);
+    else if (this.status === "opening") this.handleOpening(seat, intent);
     else this.handlePlay(seat, intent);
     this.scheduleBot();
   }
@@ -299,11 +334,62 @@ export class Room {
     this.status = "playing";
   }
 
+  // Ronde selesai: pemain menyusun tangannya dulu (usulan otomatis sebagai awal), lalu konfirmasi.
   private endRound(): void {
-    const scores = scoreRound(this.round!);
+    const round = this.round!;
+    this.status = "scoring";
+    this.scoringArrangement = round.hands.map((hand) => handArrangement(hand, round.jokerRank));
+    this.scoringConfirmed = [false, false, false, false];
+    this.seats.forEach((seatId, seat) => {
+      if (seatId.startsWith(BOT_PREFIX)) this.scoringConfirmed[seat] = true;
+    });
+    this.finishIfAllConfirmed();
+  }
+
+  private handleScoring(seat: PlayerId, intent: Intent): void {
+    if (intent.type !== "confirm") throw new Error("WRONG_PHASE");
+    if (this.scoringConfirmed[seat]) throw new Error("ALREADY_CONFIRMED");
+    const hand = this.round!.hands[seat];
+    const melds = intent.melds.map((ids) => ids.map((id) => findCard(hand, id)));
+    const arrangement = validateArrangement(hand, melds, this.round!.jokerRank);
+    if (arrangement === null) throw new Error("INVALID_ARRANGEMENT");
+    this.confirmScoring(seat, arrangement);
+  }
+
+  // arrangement null = pakai usulan otomatis yang sudah ada.
+  private confirmScoring(seat: PlayerId, arrangement: Arrangement | null): void {
+    if (this.scoringConfirmed[seat]) return;
+    if (arrangement !== null) this.scoringArrangement![seat] = arrangement;
+    this.scoringConfirmed[seat] = true;
+    this.finishIfAllConfirmed();
+  }
+
+  private finishIfAllConfirmed(): void {
+    if (this.status !== "scoring" || !this.scoringConfirmed.every(Boolean)) return;
+    this.finishRound();
+  }
+
+  private finishRound(): void {
+    const round = this.round!;
+    const arrangements = this.scoringArrangement!;
+    const scores = round.hands.map((_, seat) => seatScore(round, seat, arrangements[seat]));
+    this.roundDetail = arrangements.map((arrangement, seat) => {
+      const closed = round.result?.closedBy === seat ? round.result.bonus : 0;
+      return {
+        melds: [...round.table[seat], ...arrangement.melds],
+        meldValues: [...round.table[seat], ...arrangement.melds].map((meld) => meldValue(meld, round.jokerRank)),
+        leftover: arrangement.leftover,
+        leftoverValues: arrangement.leftover.map((card) => loneValue(card, round.jokerRank)),
+        penalty: round.penalties[seat],
+        bonus: closed,
+        score: scores[seat],
+      };
+    });
     this.lastRoundScores = scores;
     this.session = applyRound(this.session, scores);
     this.round = null;
+    this.scoringArrangement = null;
+    this.scoringConfirmed = [false, false, false, false];
     if (this.session.winner !== null) {
       this.status = "finished";
       return;

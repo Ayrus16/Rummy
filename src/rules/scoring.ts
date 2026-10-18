@@ -5,38 +5,75 @@ import type { RoundState } from "./turn";
 
 const JOKER_PENALTY_MULTIPLIER = 10;
 
-// Skor ronde per pemain. Kombinasi di meja dihitung plus; tangan dipecah
-// sehingga nilai kombinasinya maksimal, sisanya minus. Penalti joker dan
-// bonus closed ditambahkan di akhir.
-export function scoreRound(state: RoundState): number[] {
-  return state.hands.map((hand, seat) => {
-    const onTable = state.table[seat].reduce((sum, meld) => sum + meldValue(meld, state.jokerRank), 0);
-    const inHand = bestHandScore(hand, state.jokerRank);
-    const bonus = state.result?.closedBy === seat ? state.result.bonus : 0;
-    return onTable + inHand + state.penalties[seat] + bonus;
-  });
+// Susunan kartu tangan: kombinasi (plus) dan sisanya yang jadi sampah (minus).
+export interface Arrangement {
+  melds: Card[][];
+  leftover: Card[];
 }
 
-function meldValue(meld: Card[], jokerRank: Rank | null): number {
+interface Best extends Arrangement {
+  score: number;
+}
+
+// Susunan tangan dengan nilai terbaik. Dipakai sebagai usulan awal dan untuk bot.
+export function handArrangement(hand: Card[], jokerRank: Rank | null): Arrangement {
+  const best = bestFrom(hand, jokerRank);
+  return { melds: best.melds, leftover: best.leftover };
+}
+
+// Susunan yang dikirim pemain. Null jika ada kombinasi tidak sah, kartu tidak ada di tangan, atau kartu dipakai dua kali.
+export function validateArrangement(hand: Card[], melds: Card[][], jokerRank: Rank | null): Arrangement | null {
+  const used = new Set<string>();
+  for (const meld of melds) {
+    if (classify(meld, jokerRank).kind === "invalid") return null;
+    for (const card of meld) {
+      if (used.has(card.id) || !hand.some((h) => h.id === card.id)) return null;
+      used.add(card.id);
+    }
+  }
+  return { melds, leftover: hand.filter((card) => !used.has(card.id)) };
+}
+
+// Skor satu pemain untuk ronde ini dengan susunan tangan tertentu.
+export function seatScore(state: RoundState, seat: number, arrangement: Arrangement): number {
+  const onTable = state.table[seat].reduce((sum, meld) => sum + meldValue(meld, state.jokerRank), 0);
+  const plus = arrangement.melds.reduce((sum, meld) => sum + meldValue(meld, state.jokerRank), 0);
+  const minus = arrangement.leftover.reduce((sum, card) => sum + loneValue(card, state.jokerRank), 0);
+  const bonus = state.result?.closedBy === seat ? state.result.bonus : 0;
+  return onTable + plus + minus + state.penalties[seat] + bonus;
+}
+
+export function scoreRound(state: RoundState): number[] {
+  return state.hands.map((hand, seat) => seatScore(state, seat, handArrangement(hand, state.jokerRank)));
+}
+
+export function meldValue(meld: Card[], jokerRank: Rank | null): number {
   return classify(meld, jokerRank).values.reduce((sum, value) => sum + value, 0);
 }
 
-// Nilai terbaik untuk tangan: setiap kartu dipilih untuk masuk kombinasi (plus)
-// atau tidak (minus). Dicari dengan rekursi karena tangan maksimal 8 kartu.
-function bestHandScore(hand: Card[], jokerRank: Rank | null): number {
-  if (hand.length === 0) return 0;
-  const [first, ...rest] = hand;
-  const isJoker = (card: Card) => jokerRank !== null && card.rank === jokerRank;
-  const loneValue = isJoker(first)
-    ? -JOKER_PENALTY_MULTIPLIER * baseValue(first.rank)
-    : -baseValue(first.rank);
+export function loneValue(card: Card, jokerRank: Rank | null): number {
+  const isJoker = jokerRank !== null && card.rank === jokerRank;
+  return isJoker ? -JOKER_PENALTY_MULTIPLIER * baseValue(card.rank) : -baseValue(card.rank);
+}
 
-  let best = loneValue + bestHandScore(rest, jokerRank);
+// Setiap kartu dipilih untuk masuk kombinasi (plus) atau jadi sampah (minus). Dicari dengan rekursi,
+// tangan maksimal 8 kartu. Jika nilai sama, kartu dibiarkan sebagai sampah.
+function bestFrom(hand: Card[], jokerRank: Rank | null): Best {
+  if (hand.length === 0) return { score: 0, melds: [], leftover: [] };
+  const [first, ...rest] = hand;
+  const alone = bestFrom(rest, jokerRank);
+  let best: Best = {
+    score: loneValue(first, jokerRank) + alone.score,
+    melds: alone.melds,
+    leftover: [first, ...alone.leftover],
+  };
   for (const group of subsets(rest, 2, 3)) {
     const meld = [first, ...group];
     if (classify(meld, jokerRank).kind === "invalid") continue;
     const remaining = rest.filter((card) => !group.includes(card));
-    best = Math.max(best, meldValue(meld, jokerRank) + bestHandScore(remaining, jokerRank));
+    const inner = bestFrom(remaining, jokerRank);
+    const score = meldValue(meld, jokerRank) + inner.score;
+    if (score > best.score) best = { score, melds: [meld, ...inner.melds], leftover: inner.leftover };
   }
   return best;
 }

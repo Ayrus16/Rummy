@@ -172,3 +172,32 @@
   font-weight: 700;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
+
+.detail {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.detailSeat {
+  margin: 6px 0;
+}
+
+.plus {
+  margin-left: 6px;
+  font-weight: 700;
+  color: #9be39b;
+}
+
+.minus {
+  margin-left: 2px;
+  font-weight: 700;
+  color: #f4a4a4;
+}
+
+.leftover {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 6px;
+}

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ButtonHTMLAttributes } from "react";
 import type { Card } from "../../src/rules/cards";
+import { classify } from "../../src/rules/combos";
 import type { Intent } from "../../server/room";
 import type { PlayerView } from "../../server/view";
 import styles from "./Table.module.css";
@@ -22,6 +23,10 @@ function cardLabel(card: Card): string {
 
 function bySuitThenRank(a: Card, b: Card): number {
   return SUIT_ORDER.indexOf(a.suit) - SUIT_ORDER.indexOf(b.suit) || RANK_ORDER.indexOf(a.rank) - RANK_ORDER.indexOf(b.rank);
+}
+
+function signed(value: number): string {
+  return `${value > 0 ? "+" : ""}${value}`;
 }
 
 type DragProps = Pick<ButtonHTMLAttributes<HTMLButtonElement>, "draggable" | "onDragStart" | "onDragOver" | "onDrop" | "onDragEnd">;
@@ -73,9 +78,20 @@ export function Table({ view, error, onIntent }: TableProps) {
   const [order, setOrder] = useState<string[]>([]);
   const [dragId, setDragId] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
+  // Susunan kombinasi saat fase penyusunan. Null berarti belum diubah, jadi pakai usulan server.
+  const [edit, setEdit] = useState<{ round: number; groups: string[][] } | null>(null);
 
   const board = view.board;
+  const myTurn = board !== null && board.turn === view.you;
+  const inOpening = board?.phase === "opening";
+  const drawPhase = board?.phase === "draw";
+  const discardPhase = board?.phase === "discard";
+  // Pembukaan memakai status "opening", permainan memakai "playing". Keduanya boleh bertindak saat gilirannya.
+  const playable = board !== null && (view.status === "opening" || view.status === "playing") && myTurn;
+  const scoringPhase = view.status === "scoring" && view.scoring !== null;
+  const myConfirmed = scoringPhase && view.scoring!.confirmed[view.you];
   const jokerRank = board?.jokerRank ?? null;
+
   // Joker diumumkan sekali saat ditentukan (popup 5 detik), lalu hilang dan tidak ditampilkan lagi.
   const [jokerPopup, setJokerPopup] = useState<string | null>(null);
   const [prevJoker, setPrevJoker] = useState(jokerRank);
@@ -96,19 +112,22 @@ export function Table({ view, error, onIntent }: TableProps) {
     return () => clearTimeout(timer);
   }, [confirmReset]);
 
-  const myTurn = board !== null && board.turn === view.you;
-  const inOpening = board?.phase === "opening";
-  const drawPhase = board?.phase === "draw";
-  const discardPhase = board?.phase === "discard";
-  // Pembukaan memakai status "opening", permainan memakai "playing". Keduanya boleh bertindak saat gilirannya.
-  const playable = board !== null && (view.status === "opening" || view.status === "playing") && myTurn;
-
   // Kartu yang belum punya posisi (baru datang) ditaruh di belakang, sesuai urutan dari server.
   const handIds = [
     ...order.filter((id) => view.hand.some((card) => card.id === id)),
     ...view.hand.map((card) => card.id).filter((id) => !order.includes(id)),
   ];
   const hand = handIds.map((id) => view.hand.find((card) => card.id === id)!);
+
+  // Penyusunan: kombinasi dari usulan server, atau dari hasil edit pemain di ronde ini.
+  const serverGroups = (view.scoring?.mine?.melds ?? []).map((meld) => meld.map((card) => card.id));
+  const groups = edit !== null && edit.round === view.rounds ? edit.groups : serverGroups;
+  const groupedIds = groups.flat();
+  const leftoverCards = view.hand.filter((card) => !groupedIds.includes(card.id));
+
+  function setGroups(next: string[][]) {
+    setEdit({ round: view.rounds, groups: next });
+  }
 
   function toggle(id: string) {
     setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
@@ -146,6 +165,14 @@ export function Table({ view, error, onIntent }: TableProps) {
   const canLayDown = (drawPhase || discardPhase) && playable && selected.length >= 3;
   const canPickup = drawPhase && playable && pickupTarget !== null && selected.length >= 2;
 
+  // Kartu terpilih dari sampah bisa dijadikan kombinasi baru kalau sah.
+  const selectedLeftover = leftoverCards.filter((card) => selected.includes(card.id));
+  const canGroup = scoringPhase && !myConfirmed && selectedLeftover.length >= 3 &&
+    classify(selectedLeftover, jokerRank).kind !== "invalid";
+  const waiting = scoringPhase
+    ? view.scoring!.confirmed.map((ok, seat) => (ok ? null : `P${seat + 1}`)).filter(Boolean).join(", ")
+    : "";
+
   return (
     <main className={styles.page}>
       {jokerPopup !== null && <div className={styles.jokerPopup}>Joker ditentukan: {jokerPopup}</div>}
@@ -166,13 +193,47 @@ export function Table({ view, error, onIntent }: TableProps) {
       {view.status === "finished" && (
         <p className={styles.notice}>Pemenang: P{(view.winner ?? 0) + 1}</p>
       )}
-      {view.status === "opening" && view.lastRoundScores !== null && (
+      {scoringPhase && (
         <p className={styles.notice}>
-          Skor ronde terakhir:{" "}
-          {view.lastRoundScores.map((score, seat) => `P${seat + 1} ${score > 0 ? "+" : ""}${score}`).join(" · ")}
+          Ronde selesai. {myConfirmed ? `Menunggu konfirmasi dari ${waiting}.` : "Susun kombinasimu lalu konfirmasi."}
         </p>
       )}
       {error && <p className={styles.error}>{error}</p>}
+
+      {view.roundDetail !== null && !scoringPhase && (
+        <section className={styles.detail}>
+          <div className={styles.label}>Hasil ronde terakhir</div>
+          {view.roundDetail.map((detail, seat) => (
+            <div key={seat} className={styles.detailSeat}>
+              <strong>
+                P{seat + 1}: {signed(detail.score)}
+              </strong>
+              {detail.melds.map((meld, i) => (
+                <div key={i} className={styles.row}>
+                  <div className={styles.meld}>
+                    {meld.map((card) => (
+                      <CardFace key={card.id} card={card} disabled />
+                    ))}
+                  </div>
+                  <span className={styles.plus}>{signed(detail.meldValues[i])}</span>
+                </div>
+              ))}
+              {detail.leftover.length > 0 && (
+                <div className={styles.row}>
+                  {detail.leftover.map((card, i) => (
+                    <span key={card.id} className={styles.leftover}>
+                      <CardFace card={card} disabled />
+                      <span className={styles.minus}>{signed(detail.leftoverValues[i])}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+              {detail.bonus !== 0 && <div>Bonus closed: {signed(detail.bonus)}</div>}
+              {detail.penalty !== 0 && <div>Penalti joker: {signed(detail.penalty)}</div>}
+            </div>
+          ))}
+        </section>
+      )}
 
       <section className={styles.opponents}>
         {view.handCounts.map((count, seat) =>
@@ -256,43 +317,86 @@ export function Table({ view, error, onIntent }: TableProps) {
             Buang
           </button>
         )}
-        {!playable && view.status !== "finished" && view.status !== "cancelled" && (
+        {!playable && view.status !== "finished" && view.status !== "cancelled" && view.status !== "scoring" && (
           <span className={styles.label}>
             Giliran P{(board?.turn ?? 0) + 1}
           </span>
         )}
       </section>
 
-      {board && board.table[view.you].length > 0 && (
+      {board && board.table[view.you].length > 0 && !scoringPhase && (
         <section className={styles.hand}>
           <div className={styles.label}>Kombinasi yang kamu turunkan</div>
           <Melds melds={board.table[view.you]} />
         </section>
       )}
 
-      <section className={styles.hand}>
-        <div className={styles.label}>
-          Kartumu{" "}
-          <button type="button" className={styles.tool} onClick={() => setOrder([...view.hand].sort(bySuitThenRank).map((card) => card.id))}>
-            Urutkan
-          </button>
-        </div>
-        <div className={styles.row}>
-          {hand.map((card) => (
-            <CardFace
-              key={card.id}
-              card={card}
-              selected={selected.includes(card.id)}
-              onClick={() => playable && toggle(card.id)}
-              draggable
-              onDragStart={() => setDragId(card.id)}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={() => dragId !== null && moveBefore(dragId, card.id)}
-              onDragEnd={() => setDragId(null)}
-            />
+      {scoringPhase && !myConfirmed ? (
+        <section className={styles.hand}>
+          <div className={styles.label}>Kombinasimu (kartu yang tidak masuk kombinasi dihitung minus)</div>
+          {groups.map((group, index) => (
+            <div key={index} className={styles.row}>
+              {group.map((id) => {
+                const card = view.hand.find((c) => c.id === id)!;
+                return <CardFace key={id} card={card} disabled />;
+              })}
+              <button type="button" className={styles.tool} onClick={() => setGroups(groups.filter((_, i) => i !== index))}>
+                Lepas
+              </button>
+            </div>
           ))}
-        </div>
-      </section>
+          <div className={styles.label}>Sampah</div>
+          <div className={styles.row}>
+            {leftoverCards.map((card) => (
+              <CardFace
+                key={card.id}
+                card={card}
+                selected={selected.includes(card.id)}
+                onClick={() => toggle(card.id)}
+              />
+            ))}
+          </div>
+          <div className={styles.row}>
+            <button
+              type="button"
+              disabled={!canGroup}
+              onClick={() => {
+                setGroups([...groups, selectedLeftover.map((card) => card.id)]);
+                clearSelection();
+              }}
+            >
+              Jadikan kombinasi
+            </button>
+            <button type="button" onClick={() => onIntent({ type: "confirm", melds: groups })}>
+              Konfirmasi susunan
+            </button>
+          </div>
+        </section>
+      ) : (
+        <section className={styles.hand}>
+          <div className={styles.label}>
+            Kartumu{" "}
+            <button type="button" className={styles.tool} onClick={() => setOrder([...view.hand].sort(bySuitThenRank).map((card) => card.id))}>
+              Urutkan
+            </button>
+          </div>
+          <div className={styles.row}>
+            {hand.map((card) => (
+              <CardFace
+                key={card.id}
+                card={card}
+                selected={selected.includes(card.id)}
+                onClick={() => playable && toggle(card.id)}
+                draggable
+                onDragStart={() => setDragId(card.id)}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={() => dragId !== null && moveBefore(dragId, card.id)}
+                onDragEnd={() => setDragId(null)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className={styles.actions}>
         <button type="button" className={styles.reset} onClick={resetClicked}>

@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { Card, Rank } from "../../src/rules/cards";
-import { scoreRound } from "../../src/rules/scoring";
+import { handArrangement, scoreRound, seatScore, validateArrangement } from "../../src/rules/scoring";
 import type { RoundState } from "../../src/rules/turn";
 
 function c(id: string): Card {
@@ -59,4 +59,27 @@ test("score may be negative", () => {
 test("round penalties are included", () => {
   const s = round({ penalties: [-50, 0, 0, 0] });
   expect(scoreRound(s)[0]).toBe(-50);
+});
+
+test("validateArrangement accepts a legal split and returns the rest as leftover", () => {
+  const hand = [c("2H"), c("3H"), c("4H"), c("9S")];
+  const out = validateArrangement(hand, [[c("2H"), c("3H"), c("4H")]], null);
+  expect(out).not.toBeNull();
+  expect(out!.leftover.map((card) => card.id)).toEqual(["9S"]);
+});
+
+test("validateArrangement rejects invalid melds, duplicates, and foreign cards", () => {
+  const hand = [c("2H"), c("3H"), c("4H"), c("9S")];
+  expect(validateArrangement(hand, [[c("2H"), c("3H")]], null)).toBeNull();
+  expect(validateArrangement(hand, [[c("2H"), c("3H"), c("4H")], [c("4H"), c("9S"), c("8S")]], null)).toBeNull();
+  expect(validateArrangement(hand, [[c("2H"), c("3H"), c("5H")]], null)).toBeNull();
+});
+
+test("seatScore with the automatic arrangement matches scoreRound", () => {
+  const s = round({
+    hands: [[c("2H"), c("3H"), c("4H"), c("9S")], [], [], []],
+    table: [[[c("7C"), c("7D"), c("7S")]], [], [], []],
+  });
+  const auto = handArrangement(s.hands[0], s.jokerRank);
+  expect(seatScore(s, 0, auto)).toBe(scoreRound(s)[0]);
 });
