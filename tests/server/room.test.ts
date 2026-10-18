@@ -3,14 +3,12 @@ import { createRoom, Room } from "../../server/room";
 import { viewFor } from "../../server/view";
 
 const TIMEOUT_MS = 60_000;
-const PRESENCE_MS = 5_000;
 
 function newRoom(): Room {
   // rng konstan membuat kocokan deterministik, jadi tes tidak bergantung pada urutan acak.
   return createRoom(["u0", "u1", "u2", "u3"], {
     target: 1000,
     disconnectTimeoutMs: TIMEOUT_MS,
-    presenceMs: PRESENCE_MS,
     rng: () => 0,
   });
 }
@@ -19,13 +17,12 @@ function botRoom(): Room {
   return createRoom(["u0", "bot:1", "bot:2", "bot:3"], {
     target: 1000,
     disconnectTimeoutMs: TIMEOUT_MS,
-    presenceMs: PRESENCE_MS,
     rng: () => 0,
     botDelayMs: 10,
   });
 }
 
-// Maju waktu sambil menjalankan tick, seperti request polling yang datang terus-menerus.
+// Maju waktu sambil menjalankan tick, seperti alarm Durable Object yang dipanggil saat tiba waktunya.
 function advance(room: Room, ms: number): void {
   for (let t = 0; t < ms; t += 10) {
     vi.advanceTimersByTime(10);
@@ -79,21 +76,19 @@ test("unknown card id is refused", () => {
   expect(() => room.handle(0, { type: "opening_discard", cardId: "ZZ" })).toThrow("CARD_NOT_IN_HAND");
 });
 
-test("a player who stops polling pauses the round", () => {
+test("a disconnected player pauses the round", () => {
   const room = newRoom();
-  room.touch(1);
-  advance(room, PRESENCE_MS + 10);
+  room.disconnect(1);
   expect(room.status).toBe("paused");
   expect(room.pausedSeat).toBe(1);
   expect(() => room.handle(0, { type: "opening_draw" })).toThrow("PAUSED");
 });
 
-test("returning within timeout resumes the round", () => {
+test("reconnecting within timeout resumes the round", () => {
   const room = newRoom();
-  room.touch(1);
-  advance(room, PRESENCE_MS + 10);
+  room.disconnect(1);
   advance(room, TIMEOUT_MS - 1000);
-  room.touch(1);
+  room.connect(1);
   expect(room.status).toBe("opening");
   expect(room.pausedSeat).toBeNull();
   expect(() => room.handle(0, { type: "opening_draw" })).not.toThrow();
@@ -101,10 +96,17 @@ test("returning within timeout resumes the round", () => {
 
 test("timeout cancels the session", () => {
   const room = newRoom();
-  room.touch(1);
-  advance(room, PRESENCE_MS + TIMEOUT_MS + 100);
+  room.disconnect(1);
+  advance(room, TIMEOUT_MS + 100);
   expect(room.status).toBe("cancelled");
   expect(() => room.handle(0, { type: "opening_draw" })).toThrow("ROOM_CLOSED");
+});
+
+test("nextDeadline points at the pause timeout while paused", () => {
+  const room = newRoom();
+  const before = Date.now();
+  room.disconnect(1);
+  expect(room.nextDeadline()).toBe(before + TIMEOUT_MS);
 });
 
 test("finished opening starts play with the first player", () => {
@@ -122,7 +124,6 @@ test("room state survives a JSON round trip", () => {
   const restored = Room.restore(stored, {
     target: 1000,
     disconnectTimeoutMs: TIMEOUT_MS,
-    presenceMs: PRESENCE_MS,
     rng: () => 0,
   });
   expect(restored.board()).toEqual(room.board());
@@ -145,7 +146,6 @@ test("an all-bot room keeps playing rounds without stalling", () => {
   const room = createRoom(["bot:1", "bot:2", "bot:3", "bot:4"], {
     target: 300,
     disconnectTimeoutMs: TIMEOUT_MS,
-    presenceMs: PRESENCE_MS,
     rng: () => 0.5,
     botDelayMs: 1,
   });

@@ -37,8 +37,6 @@ export const BOT_PREFIX = "bot:";
 export interface RoomOptions {
   target: number;
   disconnectTimeoutMs: number;
-  // Pemain dianggap pergi jika tidak melakukan permintaan selama ini.
-  presenceMs: number;
   rng?: () => number;
   now?: () => number;
   botDelayMs?: number;
@@ -57,7 +55,6 @@ export interface RoomSnapshot {
   opening: OpeningState | null;
   round: RoundState | null;
   botDueAt: number | null;
-  lastSeen: (number | null)[];
 }
 
 // Papan ronde yang sedang berjalan, atau fase pembukaan (jika ronde belum mulai main).
@@ -92,7 +89,6 @@ export class Room {
   private resumeStatus: RoomStatus = "opening";
   private pausedAt: number | null = null;
   private botDueAt: number | null = null;
-  private lastSeen: (number | null)[] = [null, null, null, null];
 
   constructor(
     readonly seats: string[],
@@ -118,7 +114,6 @@ export class Room {
     room.opening = snapshot.opening;
     room.round = snapshot.round;
     room.botDueAt = snapshot.botDueAt;
-    room.lastSeen = snapshot.lastSeen;
     return room;
   }
 
@@ -135,24 +130,22 @@ export class Room {
       opening: this.opening,
       round: this.round,
       botDueAt: this.botDueAt,
-      lastSeen: [...this.lastSeen],
     };
   }
 
-  // Dipanggil di setiap request sebelum tindakan: jalankan bot yang sudah jatuh tempo,
-  // tandai pemain yang tidak terlihat sebagai terputus, dan batalkan sesi jika terlalu lama terputus.
+  // Waktu paling awal ketika tick() perlu dipanggil lagi (bot jalan atau sesi terjeda habis). Null jika tidak ada.
+  nextDeadline(): number | null {
+    const pauseEnds = this.status === "paused" && this.pausedAt !== null ? this.pausedAt + this.options.disconnectTimeoutMs : null;
+    const candidates = [this.botDueAt, pauseEnds].filter((t): t is number => t !== null);
+    return candidates.length === 0 ? null : Math.min(...candidates);
+  }
+
+  // Dipanggil saat waktunya tiba: batalkan sesi yang terjeda terlalu lama, dan jalankan bot yang sudah jatuh tempo.
   tick(): void {
     const now = this.now();
     if (this.status === "paused" && this.pausedAt !== null && now - this.pausedAt >= this.options.disconnectTimeoutMs) {
       this.cancel();
       return;
-    }
-    if (this.status === "opening" || this.status === "playing") {
-      const stale = this.seats.findIndex((seat, i) => {
-        const last = this.lastSeen[i];
-        return !seat.startsWith(BOT_PREFIX) && last !== null && now - last > this.options.presenceMs;
-      });
-      if (stale !== -1) this.pause(stale as PlayerId, now);
     }
     for (let i = 0; i < MAX_BOT_STEPS_PER_TICK && this.botDueAt !== null && this.botDueAt <= now; i++) {
       this.botDueAt = null;
@@ -160,9 +153,13 @@ export class Room {
     }
   }
 
-  // Setiap request dari pemain mencatat bahwa ia masih ada. Jika ruang sedang terjeda karena pemain ini, ruang lanjut.
-  touch(seat: PlayerId): void {
-    this.lastSeen[seat] = this.now();
+  // Koneksi pemain putus: sesi terjeda sampai pemain kembali atau batas waktu habis.
+  disconnect(seat: PlayerId): void {
+    if (this.status === "opening" || this.status === "playing") this.pause(seat, this.now());
+  }
+
+  // Koneksi pemain tersambung lagi: sesi yang terjeda karena pemain ini lanjut.
+  connect(seat: PlayerId): void {
     if (this.status === "paused" && seat === this.pausedSeat) this.resume();
   }
 

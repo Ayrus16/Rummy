@@ -41,3 +41,7 @@ yarn-error.log*
 next-env.d.ts
 .superpowers/
 !.env.example
+
+# cloudflare worker (wrangler)
+.wrangler
+.dev.vars

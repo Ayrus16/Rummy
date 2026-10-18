@@ -1,9 +1,9 @@
 import { DiscordSDK } from "@discord/embedded-app-sdk";
 
 export interface DiscordSession {
-  channelId: string;
+  // ID peluncuran Activity. Baru untuk setiap peluncuran, dan dipakai server untuk memverifikasi peserta.
+  instanceId: string;
   accessToken: string;
-  participantIds: string[];
 }
 
 // Alur: ready -> authorize (kode) -> tukar kode di server kita -> authenticate.
@@ -37,12 +37,6 @@ export async function connectDiscord(onStep: (message: string) => void): Promise
 
   onStep("Autentikasi pengguna...");
   const auth = await sdk.commands.authenticate({ access_token });
-  if (sdk.channelId === null) throw new Error("NO_CHANNEL");
-  const { participants } = await sdk.commands.getInstanceConnectedParticipants();
 
-  return {
-    channelId: sdk.channelId,
-    accessToken: auth.access_token,
-    participantIds: participants.map((p) => p.id),
-  };
+  return { instanceId: sdk.instanceId, accessToken: auth.access_token };
 }

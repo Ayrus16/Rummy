@@ -28,12 +28,14 @@ Membuat permainan kartu Remi Indonesia yang bisa dimainkan 4 orang secara online
 
 ## Keputusan platform (ditentukan oleh kami, bukan pemain)
 
-- **Frontend:** Next.js (App Router), dirender sebagai aplikasi klien di dalam iframe Discord Activity.
-- **Realtime:** server Node.js terpisah dengan WebSocket (Socket.IO). Alasannya: koneksi realtime yang panjang tidak cocok dijalankan di serverless tempat Next.js biasanya di-deploy. Ini keputusan kami dan perlu dicek ulang saat implementasi.
+- **Frontend:** Next.js (App Router) di Vercel, dirender sebagai aplikasi klien di dalam iframe Discord Activity. Vercel hanya melayani halaman dan `/api/token`.
+- **Realtime:** Cloudflare Worker dengan Durable Object `Table`, satu per peluncuran Activity (`instanceId`), memakai WebSocket native. Koneksi realtime yang panjang tidak bisa dijalankan di Vercel, jadi bagian ini dipisah. Pola ini sama dengan aplikasi uno.
+- **Koneksi dari Discord:** klien hanya boleh menghubungi domain Vercel dan domain yang dipetakan di URL Mappings. WebSocket ke Worker lewat mapping `/ws` (klien memakai `/.proxy/ws/room/<instanceId>`).
 - **Otoritas aturan:** server yang menjalankan seluruh logika permainan, termasuk pengocokan, pembagian, validasi kombinasi, dan skor. Klien hanya mengirim niat (ambil, turunkan, buang) dan menerima tampilan yang sudah disaring.
 - **Integrasi Discord:** memakai Discord Embedded App SDK. Detail autentikasi dan cara mendaftarkan Activity harus dicek ke dokumentasi resmi Discord saat implementasi, karena belum diverifikasi.
 - **Bahasa:** TypeScript di seluruh kode.
-- **Penyimpanan:** tidak ada database di versi pertama. Sesi hidup di memori server. Kalau server restart, sesi hilang.
+- **Penyimpanan:** state ruang disimpan di storage Durable Object (SQLite, paket gratis Cloudflare). Tidak ada database terpisah. Alarm Durable Object dipakai untuk timer bot dan batas waktu putus.
+- **Verifikasi peserta:** server memanggil REST Discord `GET /applications/{app_id}/activity-instances/{instance_id}` dengan bot token (secret Worker `DISCORD_BOT_TOKEN`). Daftar `users` di respons menjadi kursi. Klien tidak mengirim daftar peserta.
 
 ## Konstrain
 
@@ -45,7 +47,7 @@ Membuat permainan kartu Remi Indonesia yang bisa dimainkan 4 orang secara online
 ## Bagian cara kerja (keputusan yang sudah diambil)
 
 ### Alur sesi
-1. Satu pemain membuat sesi dari Discord Activity. Empat kursi diisi otomatis dari anggota voice channel yang sedang aktif di Activity. Tidak ada penonton di versi pertama.
+1. Satu pemain membuat sesi dari Discord Activity. Empat kursi diisi dari daftar peserta instance Activity yang diverifikasi server lewat REST Discord. Peserta harus terhubung ke instance itu. Tidak ada penonton di versi pertama.
 2. Pemain bisa menentukan target poin (default 1000) sebelum permainan dimulai.
 3. Ronde pertama dimulai dengan pemain 1. Setelah itu, giliran pertama di setiap ronde berikutnya diberikan kepada pemain dengan skor total tertinggi. Kalau skor sama, pemain dengan nomor kursi lebih kecil (keputusan kami; spesifikasi tidak menyebutkannya).
 
