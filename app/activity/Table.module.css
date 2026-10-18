@@ -11,7 +11,7 @@
   flex-direction: column;
   gap: 16px;
   min-height: 100vh;
-  padding: 16px;
+  padding: 32px 16px 16px;
   background: #0f5132;
   color: #f8f9fa;
   font-family: var(--font-geist-sans), sans-serif;
@@ -325,11 +325,11 @@
     font-size: 0.95rem;
   }
 
-  .corner {
+  .card .corner {
     font-size: 0.75em;
   }
 
-  .center {
+  .card .center {
     font-size: 0.8em;
   }
 
