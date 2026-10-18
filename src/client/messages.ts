@@ -34,6 +34,9 @@ const MESSAGES: Record<string, string> = {
   PURE_SERI_REQUIRED: "Kamu belum menurunkan seri murni, jadi kartu di tangan dihitung minus semua.",
   ALREADY_CONFIRMED: "Kamu sudah konfirmasi susunan.",
 
+  // Reset
+  RESET_NOT_ALLOWED: "Hanya P1 yang bisa mereset game.",
+
   // Target
   TARGET_LOCKED: "Target tidak bisa diubah setelah ronde pertama selesai.",
   INVALID_TARGET: "Target harus antara 100 dan 5000.",

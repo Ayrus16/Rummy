@@ -43,26 +43,31 @@ export function drawFromStock(state: RoundState, player: PlayerId): RoundState {
 // Syarat: pemain sudah pernah menurunkan seri murni di ronde ini.
 // Kombinasi = kartu yang dituju + minimal dua kartu dari tangan.
 // Kartu di atas kartu yang dituju tetap masuk tangan.
+// Kartu yang diambil adalah target dan semua kartu di atasnya. Kartu target wajib masuk kombinasi.
+// Kartu lain di atas target boleh ikut kombinasi (fromDiscard), sisanya masuk tangan.
+// Kombinasi harus memakai minimal 2 kartu dari tangan.
 export function pickFromDiscard(
   state: RoundState,
   player: PlayerId,
   target: Card,
   handCards: Card[],
+  fromDiscard: Card[] = [],
 ): RoundState {
   assertTurn(state, player, "draw");
   const taken = pickableFromDiscard(state.discard, target);
   if (taken === null) throw new Error("PICKUP_BLOCKED");
   if (handCards.length < 2) throw new Error("INVALID_MELD");
-  const meld = [target, ...handCards];
+  const above = taken.filter((card) => card.id !== target.id);
+  if (!fromDiscard.every((card) => above.some((a) => a.id === card.id))) throw new Error("INVALID_MELD");
+  const meld = [target, ...fromDiscard, ...handCards];
   const check = classify(meld, state.jokerRank);
   if (check.kind === "invalid") throw new Error("INVALID_MELD");
-  // Pengambilan pertama di ronde harus sekaligus membentuk seri murni (kartu yang diambil ikut di dalamnya).
-  // Setelah seri murni sudah turun, pengambilan berikutnya boleh kombinasi apa pun yang sah.
-  if (!state.laidPureSeri[player] && !(check.kind === "seri" && check.pure)) throw new Error("NEED_PURE_SERI");
+  // Pengambilan pertama di ronde harus sekaligus membentuk seri murni. Tris As tanpa joker juga seri murni.
+  if (!state.laidPureSeri[player] && !check.pure) throw new Error("NEED_PURE_SERI");
 
   const remaining = [
     ...removeCards(state.hands[player], handCards),
-    ...taken.filter((card) => card.id !== target.id),
+    ...above.filter((card) => !fromDiscard.some((f) => f.id === card.id)),
   ];
   const table = state.table.map((melds, seat) => (seat === player ? [...melds, meld] : melds));
   const laidPureSeri = state.laidPureSeri.map((flag, seat) => (seat === player ? true : flag));
@@ -81,7 +86,8 @@ export function pickFromDiscard(
 export function layDownPureSeri(state: RoundState, player: PlayerId, cards: Card[]): RoundState {
   assertTurn(state, player);
   const check = classify(cards, state.jokerRank);
-  if (check.kind !== "seri" || !check.pure) throw new Error("NOT_PURE_SERI");
+  // Seri murni: seri tanpa joker, atau tris As tanpa joker.
+  if (!check.pure) throw new Error("NOT_PURE_SERI");
   const hand = removeCards(state.hands[player], cards);
   const laidPureSeri = state.laidPureSeri.map((flag, seat) => (seat === player ? true : flag));
   const table = state.table.map((melds, seat) => (seat === player ? [...melds, cards] : melds));

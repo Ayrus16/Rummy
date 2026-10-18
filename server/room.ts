@@ -32,7 +32,8 @@ export type Intent =
   | { type: "opening_draw" }
   | { type: "opening_discard"; cardId: string }
   | { type: "draw_stock" }
-  | { type: "pickup"; targetId: string; handIds: string[] }
+  // discardIds: kartu di atas target yang ikut dibentuk jadi kombinasi. Sisanya masuk tangan.
+  | { type: "pickup"; targetId: string; handIds: string[]; discardIds?: string[] }
   | { type: "lay_down"; cardIds: string[] }
   | { type: "discard"; cardId: string }
   // Ditangani di worker (membuat ruang baru), bukan di Room.handle.
@@ -303,7 +304,8 @@ export class Room {
       case "pickup": {
         const target = findCard(round.discard.cards, intent.targetId);
         const handCards = intent.handIds.map((id) => findCard(round.hands[seat], id));
-        this.round = pickFromDiscard(round, seat, target, handCards);
+        const fromDiscard = (intent.discardIds ?? []).map((id) => findCard(round.discard.cards, id));
+        this.round = pickFromDiscard(round, seat, target, handCards, fromDiscard);
         break;
       }
       case "lay_down":

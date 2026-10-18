@@ -149,7 +149,10 @@ export class Table extends DurableObject<Env> {
     const loaded = await this.load();
     if (loaded === null) return ws.send(JSON.stringify({ type: "error", error: "ROOM_NOT_FOUND" }));
     // Reset membuat ruang baru dengan kursi yang sama (termasuk bot dan pemain yang sudah masuk).
-    if (intent.type === "reset") return this.commit(createRoom([...loaded.seats], ROOM_OPTIONS));
+    if (intent.type === "reset") {
+      if (seat !== 0) return ws.send(JSON.stringify({ type: "error", error: "RESET_NOT_ALLOWED" }));
+      return this.commit(createRoom([...loaded.seats], ROOM_OPTIONS));
+    }
     const room = loaded;
     room.tick();
     let error: string | null = null;

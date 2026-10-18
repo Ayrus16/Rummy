@@ -1,6 +1,14 @@
 "use client";
 
-import { Children, useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
+import {
+  Children,
+  useEffect,
+  useRef,
+  useState,
+  type ButtonHTMLAttributes,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import type { Card } from "../../src/rules/cards";
 import { classify } from "../../src/rules/combos";
 import type { Intent } from "../../server/room";
@@ -25,7 +33,7 @@ function signed(value: number): string {
   return `${value > 0 ? "+" : ""}${value}`;
 }
 
-type DragProps = Pick<ButtonHTMLAttributes<HTMLButtonElement>, "draggable" | "onDragStart" | "onDragOver" | "onDrop" | "onDragEnd">;
+type DragProps = Pick<ButtonHTMLAttributes<HTMLButtonElement>, "onPointerDown" | "onPointerMove" | "onPointerUp" | "onPointerCancel">;
 
 function CardFace({
   card,
@@ -46,6 +54,7 @@ function CardFace({
       className={`${styles.card} ${red ? styles.red : ""} ${selected ? styles.selected : ""}`}
       onClick={onClick}
       disabled={disabled}
+      data-card-id={card.id}
       {...drag}
     >
       <span className={styles.corner}>
@@ -64,7 +73,7 @@ function CardFace({
 }
 
 // Baris kartu yang menumpuk otomatis: berjarak normal kalau muat, dan kartu saling menutupi hanya kalau ruangnya sempit.
-function FitRow({ count, children }: { count: number; children: ReactNode }) {
+function FitRow({ count, children, hand = false }: { count: number; children: ReactNode; hand?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   // Jarak antarkartu: 6px kalau muat, negatif (tumpuk) kalau ruangnya kurang.
   const [spacing, setSpacing] = useState(6);
@@ -82,7 +91,7 @@ function FitRow({ count, children }: { count: number; children: ReactNode }) {
     return () => observer.disconnect();
   }, [count]);
   return (
-    <div ref={ref} className={styles.fitRow}>
+    <div ref={ref} className={styles.fitRow} data-hand={hand ? "" : undefined}>
       {Children.map(children, (child, i) => (
         <div className={styles.slot} style={{ marginLeft: i === 0 ? 0 : spacing }}>
           {child}
@@ -111,7 +120,10 @@ export function Table({ view, error, onIntent }: TableProps) {
   const [pickupTarget, setPickupTarget] = useState<string | null>(null);
   // Urutan tampilan kartu di tangan. Hanya di klien, tidak dikirim ke server.
   const [order, setOrder] = useState<string[]>([]);
-  const [dragId, setDragId] = useState<string | null>(null);
+  const [pickupExtra, setPickupExtra] = useState<string[]>([]);
+  // Tarik kartu tangan untuk mengubah urutannya. Kartu bergeser langsung saat pointer melewati kartu lain.
+  const dragRef = useRef<{ id: string; moved: boolean } | null>(null);
+  const justDragged = useRef(false);
   const [confirmReset, setConfirmReset] = useState(false);
   // Susunan kombinasi saat fase penyusunan. Null berarti belum diubah, jadi pakai usulan server.
   const [edit, setEdit] = useState<{ round: number; groups: string[][] } | null>(null);
@@ -172,6 +184,7 @@ export function Table({ view, error, onIntent }: TableProps) {
   function clearSelection() {
     setSelected([]);
     setPickupTarget(null);
+    setPickupExtra([]);
   }
 
   function send(intent: Intent) {
@@ -179,11 +192,46 @@ export function Table({ view, error, onIntent }: TableProps) {
     clearSelection();
   }
 
-  function moveBefore(dragged: string, target: string) {
-    if (dragged === target) return;
-    const ids = handIds.filter((id) => id !== dragged);
-    ids.splice(ids.indexOf(target), 0, dragged);
-    setOrder(ids);
+  function handPointerDown(id: string, event: ReactPointerEvent<HTMLButtonElement>) {
+    dragRef.current = { id, moved: false };
+    justDragged.current = false;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handPointerMove(event: ReactPointerEvent<HTMLButtonElement>) {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const row = event.currentTarget.closest<HTMLElement>("[data-hand]");
+    if (!row) return;
+    const others = Array.from(row.querySelectorAll<HTMLElement>("[data-card-id]")).filter(
+      (el) => el.dataset.cardId !== drag.id,
+    );
+    const at = others.findIndex((el) => {
+      const box = el.getBoundingClientRect();
+      return event.clientX < box.left + box.width / 2;
+    });
+    const next = handIds.filter((id) => id !== drag.id);
+    next.splice(at === -1 ? others.length : at, 0, drag.id);
+    if (next.some((id, i) => id !== handIds[i])) {
+      drag.moved = true;
+      setOrder(next);
+    }
+  }
+
+  function handPointerUp() {
+    justDragged.current = dragRef.current?.moved ?? false;
+    dragRef.current = null;
+  }
+
+  // Klik kartu di buangan: kartu target dipilih dulu, lalu kartu di atasnya bisa ikut dibentuk jadi kombinasi.
+  function discardClick(id: string, index: number) {
+    const targetIndex = board?.discard.cards.findIndex((card) => card.id === pickupTarget) ?? -1;
+    if (pickupTarget !== null && index > targetIndex) {
+      setPickupExtra((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+      return;
+    }
+    setPickupTarget(pickupTarget === id ? null : id);
+    setPickupExtra([]);
   }
 
   function resetClicked() {
@@ -356,14 +404,17 @@ export function Table({ view, error, onIntent }: TableProps) {
 
         <div className={styles.discard}>
           <div className={styles.label}>Buangan (klik kartu untuk ambil)</div>
+          {pickupTarget !== null && (
+            <div className={styles.label}>Kartu di atas target boleh ikut dibentuk jadi kombinasi. Klik untuk memilih.</div>
+          )}
           <div className={styles.row}>
             {board?.discard.cards.map((card, index) => (
               <CardFace
                 key={card.id}
                 card={card}
-                selected={pickupTarget === card.id}
+                selected={pickupTarget === card.id || pickupExtra.includes(card.id)}
                 disabled={!playable || !drawPhase || (board.discard.closedIndex !== null && index <= board.discard.closedIndex)}
-                onClick={() => setPickupTarget(pickupTarget === card.id ? null : card.id)}
+                onClick={() => discardClick(card.id, index)}
               />
             ))}
           </div>
@@ -389,7 +440,7 @@ export function Table({ view, error, onIntent }: TableProps) {
           <button
             type="button"
             disabled={!canPickup}
-            onClick={() => send({ type: "pickup", targetId: pickupTarget!, handIds: selected })}
+            onClick={() => send({ type: "pickup", targetId: pickupTarget!, handIds: selected, discardIds: pickupExtra })}
           >
             Ambil dari buangan
           </button>
@@ -478,18 +529,23 @@ export function Table({ view, error, onIntent }: TableProps) {
               Urutkan
             </button>
           </div>
-          <FitRow count={hand.length}>
+          <FitRow count={hand.length} hand>
             {hand.map((card) => (
               <CardFace
                 key={card.id}
                 card={card}
                 selected={selected.includes(card.id)}
-                onClick={() => playable && toggle(card.id)}
-                draggable
-                onDragStart={() => setDragId(card.id)}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={() => dragId !== null && moveBefore(dragId, card.id)}
-                onDragEnd={() => setDragId(null)}
+                onClick={() => {
+                  if (justDragged.current) {
+                    justDragged.current = false;
+                    return;
+                  }
+                  if (playable) toggle(card.id);
+                }}
+                onPointerDown={(event) => handPointerDown(card.id, event)}
+                onPointerMove={handPointerMove}
+                onPointerUp={handPointerUp}
+                onPointerCancel={handPointerUp}
               />
             ))}
           </FitRow>
@@ -497,8 +553,8 @@ export function Table({ view, error, onIntent }: TableProps) {
       )}
 
       <section className={styles.actions}>
-        <button type="button" className={styles.reset} onClick={resetClicked}>
-          {confirmReset ? "Klik lagi untuk reset game" : "Reset game"}
+        <button type="button" className={styles.reset} onClick={resetClicked} disabled={view.you !== 0}>
+          {view.you !== 0 ? "Reset game (hanya P1)" : confirmReset ? "Klik lagi untuk reset game" : "Reset game"}
         </button>
       </section>
     </main>

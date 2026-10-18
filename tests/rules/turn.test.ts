@@ -128,3 +128,27 @@ test("discard that empties the stock ends the round with no bonus", () => {
   const out = discardCard(s, 0, c("6H"));
   expect(out.result).toEqual({ closedBy: "stock_empty", bonus: 0, closingCard: null });
 });
+
+test("two aces in hand can take an ace from discard as a pure tris", () => {
+  // Tris As tanpa joker dihitung seri murni, jadi boleh jadi pengambilan pertama.
+  const s = round({
+    hands: [[c("AS"), c("AH"), c("9S")], [], [], []],
+    discard: { cards: [c("AD"), c("AC")], closedIndex: null },
+  });
+  const out = pickFromDiscard(s, 0, c("AD"), [c("AS"), c("AH")]);
+  expect(out.laidPureSeri[0]).toBe(true);
+  expect(out.table[0].length).toBe(1);
+});
+
+test("cards above the target can join the meld, the rest go to hand", () => {
+  // Discard: AD (target, index 0), AC di atasnya. Keduanya masuk tris As bersama dua As di tangan.
+  const s = round({
+    hands: [[c("AS"), c("AH"), c("9S")], [], [], []],
+    discard: { cards: [c("AD"), c("AC"), c("9C")], closedIndex: null },
+  });
+  const out = pickFromDiscard(s, 0, c("AD"), [c("AS"), c("AH")], [c("AC")]);
+  expect(ids(out.table[0][0])).toEqual(["AC", "AD", "AH", "AS"]);
+  expect(out.discard.cards.length).toBe(0);
+  // 9C ikut terambil karena di atas target, tapi tidak masuk kombinasi, jadi masuk tangan.
+  expect(ids(out.hands[0])).toEqual(["9C", "9S"]);
+});
