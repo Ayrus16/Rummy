@@ -78,8 +78,27 @@ Membuat permainan kartu Remi Indonesia yang bisa dimainkan 4 orang secara online
 
 1. Giliran pertama ronde berikutnya diberikan kepada pemain dengan skor total tertinggi. Saat skor sama, dipilih nomor kursi lebih kecil. Ronde pertama dimulai dengan pemain 1.
 2. Kartu di buangan tidak dihitung dalam skor.
-3. Realtime memakai server Node terpisah, bukan API route Next.js.
-4. Tidak ada database di versi pertama.
+3. Realtime memakai Cloudflare Worker dengan Durable Object, bukan server Node dan bukan API route Next.js. Keputusan ini diambil karena Vercel tidak bisa menjalankan koneksi WebSocket yang panjang.
+4. Tidak ada database terpisah. State ruang disimpan di storage Durable Object.
 5. Sesi dibuat dan dikelola dari dalam Discord Activity, bukan lewat perintah slash bot.
-6. Batas waktu menunggu pemain yang disconnect: nilai awal 60 detik, bisa diubah di konfigurasi. Angka ini belum diuji dan harus dicek saat playtest.
+6. Batas waktu menunggu pemain yang disconnect: 60 detik (`ROOM_OPTIONS.disconnectTimeoutMs` di `worker/worker.ts`). Sudah diuji manual dengan 2 akun: kembali dalam batas waktu melanjutkan permainan, dan lewat batas waktu sesi dibatalkan.
 7. Bot untuk testing: bot mengisi kursi kosong (dengan `addBots` saat membuat ruang) dan memakai intent yang sama dengan pemain, sehingga aturan tetap dijalankan engine. Strateginya sederhana: selalu ambil dari cangkulan, buang kartu bernilai tertinggi (bukan joker), dan tidak pernah mengambil dari buangan. Bot tidak menggantikan pemain yang disconnect; sesi tetap menunggu sampai batas waktu.
+
+## Status implementasi (per Oktober 2026)
+
+**Yang sudah berjalan:**
+- Aturan permainan di `src/rules/` dengan tes, dan logika ruang di `server/room.ts` (tanpa I/O).
+- Activity berjalan di Discord dengan 2 akun: pembukaan, giliran, dan tampilan per pemain.
+- Putus lalu kembali dalam 60 detik melanjutkan permainan. Putus lebih dari 60 detik membatalkan sesi. Keduanya sudah diuji manual.
+- Peserta diverifikasi lewat REST Discord, bukan dari daftar yang dikirim klien.
+
+**Yang belum diuji:**
+- Satu ronde penuh sampai skor dan ronde berikutnya di server (scoring lewat Worker).
+- Permainan sampai ada pemenang (status `finished`).
+- Permainan 4 pemain sungguhan tanpa bot (`NEXT_PUBLIC_ALLOW_BOTS` dimatikan).
+
+**Risiko yang diketahui:**
+- Permainan dengan semua bot tidak pernah mencapai target skor, karena bot tidak mengambil dari buangan dan tidak menurunkan kartu.
+- Respons endpoint Discord `activity-instances` (field `users`) berasal dari sumber pihak ketiga, dan sudah berjalan di Discord. Tetap perlu dicek ulang kalau Discord mengubah API.
+- Bot token adalah secret. Kalau bocor, siapa pun bisa membaca data instance Activity. Ganti lewat Developer Portal bila dicurigai bocor.
+- Kursi pertama ditentukan dari urutan peserta yang dikembalikan Discord, bukan dari pilihan pemain.
