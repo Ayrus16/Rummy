@@ -38,7 +38,19 @@ export type Intent =
   // Ditangani di worker (membuat ruang baru), bukan di Room.handle.
   | { type: "reset" }
   // Hanya saat fase penyusunan (status "scoring"): susunan kombinasi tangan lalu konfirmasi.
-  | { type: "confirm"; melds: string[][] };
+  | { type: "confirm"; melds: string[][] }
+  // Hanya sebelum ronde pertama selesai. Target 100 sampai 5000.
+  | { type: "set_target"; target: number };
+
+export const TARGET_MIN = 100;
+export const TARGET_MAX = 5000;
+
+// Skor satu ronde untuk ditampilkan sebagai riwayat. Totals adalah skor total setelah ronde itu.
+export interface HistoryEntry {
+  round: number;
+  scores: number[];
+  totals: number[];
+}
 
 export type RoomStatus = "opening" | "playing" | "scoring" | "paused" | "cancelled" | "finished";
 
@@ -73,6 +85,7 @@ export interface RoomSnapshot {
   roundDetail: RoundDetail[] | null;
   scoringArrangement: Arrangement[] | null;
   scoringConfirmed: boolean[];
+  history: HistoryEntry[];
   pausedSeat: PlayerId | null;
   pausedAt: number | null;
   resumeStatus: RoomStatus;
@@ -105,6 +118,7 @@ export class Room {
   roundDetail: RoundDetail[] | null = null;
   scoringArrangement: Arrangement[] | null = null;
   scoringConfirmed: boolean[] = [false, false, false, false];
+  history: HistoryEntry[] = [];
   session: SessionState;
   lastRoundScores: number[] | null = null;
   pausedSeat: PlayerId | null = null;
@@ -145,6 +159,7 @@ export class Room {
     room.roundDetail = snapshot.roundDetail;
     room.scoringArrangement = snapshot.scoringArrangement;
     room.scoringConfirmed = snapshot.scoringConfirmed;
+    room.history = snapshot.history;
     return room;
   }
 
@@ -164,6 +179,7 @@ export class Room {
       roundDetail: this.roundDetail,
       scoringArrangement: this.scoringArrangement,
       scoringConfirmed: [...this.scoringConfirmed],
+      history: this.history,
     };
   }
 
@@ -202,7 +218,8 @@ export class Room {
   handle(seat: PlayerId, intent: Intent): void {
     if (this.status === "paused") throw new Error("PAUSED");
     if (this.status === "cancelled" || this.status === "finished") throw new Error("ROOM_CLOSED");
-    if (this.status === "scoring") this.handleScoring(seat, intent);
+    if (intent.type === "set_target") this.setTarget(intent.target);
+    else if (this.status === "scoring") this.handleScoring(seat, intent);
     else if (this.status === "opening") this.handleOpening(seat, intent);
     else this.handlePlay(seat, intent);
     this.scheduleBot();
@@ -346,6 +363,12 @@ export class Room {
     this.finishIfAllConfirmed();
   }
 
+  private setTarget(target: number): void {
+    if (this.session.rounds > 0) throw new Error("TARGET_LOCKED");
+    if (!Number.isInteger(target) || target < TARGET_MIN || target > TARGET_MAX) throw new Error("INVALID_TARGET");
+    this.session = { ...this.session, target };
+  }
+
   private handleScoring(seat: PlayerId, intent: Intent): void {
     if (intent.type !== "confirm") throw new Error("WRONG_PHASE");
     if (this.scoringConfirmed[seat]) throw new Error("ALREADY_CONFIRMED");
@@ -387,6 +410,7 @@ export class Room {
     });
     this.lastRoundScores = scores;
     this.session = applyRound(this.session, scores);
+    this.history = [...this.history, { round: this.session.rounds, scores, totals: this.session.totals }];
     this.round = null;
     this.scoringArrangement = null;
     this.scoringConfirmed = [false, false, false, false];

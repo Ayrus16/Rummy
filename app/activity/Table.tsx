@@ -80,6 +80,7 @@ export function Table({ view, error, onIntent }: TableProps) {
   const [confirmReset, setConfirmReset] = useState(false);
   // Susunan kombinasi saat fase penyusunan. Null berarti belum diubah, jadi pakai usulan server.
   const [edit, setEdit] = useState<{ round: number; groups: string[][] } | null>(null);
+  const [targetInput, setTargetInput] = useState("");
 
   const board = view.board;
   const myTurn = board !== null && board.turn === view.you;
@@ -188,6 +189,32 @@ export function Table({ view, error, onIntent }: TableProps) {
         </div>
       </header>
 
+      {view.rounds === 0 && view.status !== "finished" && view.status !== "cancelled" && (
+        <form
+          className={styles.target}
+          onSubmit={(event) => {
+            event.preventDefault();
+            onIntent({ type: "set_target", target: Number(targetInput) });
+            setTargetInput("");
+          }}
+        >
+          <label>
+            Target poin{" "}
+            <input
+              type="number"
+              min={100}
+              max={5000}
+              step={50}
+              value={targetInput}
+              placeholder={String(view.target)}
+              onChange={(event) => setTargetInput(event.target.value)}
+            />
+          </label>
+          <button type="submit" disabled={targetInput === ""}>
+            Atur target
+          </button>
+        </form>
+      )}
       {view.status === "paused" && <p className={styles.notice}>Permainan dijeda, menunggu pemain kembali.</p>}
       {view.status === "cancelled" && <p className={styles.notice}>Sesi dibatalkan karena pemain tidak kembali.</p>}
       {view.status === "finished" && (
@@ -232,6 +259,34 @@ export function Table({ view, error, onIntent }: TableProps) {
               {detail.penalty !== 0 && <div>Penalti joker: {signed(detail.penalty)}</div>}
             </div>
           ))}
+        </section>
+      )}
+
+      {view.history.length > 0 && (
+        <section className={styles.detail}>
+          <div className={styles.label}>Riwayat poin (total setelah ronde)</div>
+          <table className={styles.history}>
+            <thead>
+              <tr>
+                <th>Ronde</th>
+                {view.seats.map((_, seat) => (
+                  <th key={seat}>P{seat + 1}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {view.history.map((entry) => (
+                <tr key={entry.round}>
+                  <td>{entry.round}</td>
+                  {entry.totals.map((total, seat) => (
+                    <td key={seat}>
+                      {total} <span className={entry.scores[seat] < 0 ? styles.minus : styles.plus}>({signed(entry.scores[seat])})</span>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </section>
       )}
 

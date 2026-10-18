@@ -52,10 +52,11 @@ Tujuan utama: 4 orang di satu voice channel bisa memulai dan menyelesaikan satu 
 - Fase penyusunan setelah ronde: pemain menyusun kombinasi lalu konfirmasi. Hasil menampilkan plus dan minus per kombinasi dan sampah.
 - Reset game dengan konfirmasi dua klik.
 - Urut kartu di tangan (drag-and-drop dan tombol Urutkan).
+- Target skor bisa diatur di awal: pemain yang sudah masuk boleh mengatur target sebelum ronde pertama selesai. Nilainya 100 sampai 5000, default 1000.
+- Riwayat poin: tabel skor total setiap pemain setelah tiap ronde.
 
 **Belum dibuat**
 
-- **Target skor bisa diatur di awal.** Spesifikasi meminta target default 1000 yang bisa diubah sebelum permainan dimulai. Saat ini target dikunci 1000 di `worker/worker.ts`.
 - **Uji sesi penuh sampai pemenang.** Belum ada sesi 4 pemain sungguhan yang berjalan sampai `finished`.
 - **Uji tampilan di HP.** Layout belum diuji di layar kecil.
 - **Uji 4 pemain sungguhan tanpa bot.** Semua tes sejauh ini memakai 2 akun dan bot.
@@ -69,7 +70,8 @@ Tujuan utama: 4 orang di satu voice channel bisa memulai dan menyelesaikan satu 
 | Realtime (Worker) | Berjalan | Deploy `remi-room-server.spike-realtime.workers.dev` |
 | Web (Vercel) | Berjalan | `remi-indo.vercel.app` |
 | Putus dan sambung lagi | Diuji manual | 60 detik |
-| Target skor bisa diatur | Belum | Lihat ruang lingkup |
+| Target skor bisa diatur | Selesai | Sebelum ronde pertama selesai, 100–5000 |
+| Riwayat poin | Selesai | Tabel total per ronde |
 | Sesi sampai pemenang | Belum diuji | Perlu sesi penuh |
 | Layout HP | Belum diuji | |
 | CI | Hijau | Lint, build, tes, dan typecheck Worker di GitHub Actions |
@@ -82,8 +84,8 @@ Tujuan utama: 4 orang di satu voice channel bisa memulai dan menyelesaikan satu 
 - **Pengaturan bot** di environment (`NEXT_PUBLIC_ALLOW_BOTS`) harus dimatikan untuk permainan 4 pemain sungguhan.
 - **Konfirmasi susunan** tidak bisa diubah setelah diklik. Ini disengaja untuk menjaga ronde tetap berjalan.
 
-## Pertanyaan terbuka
+## Keputusan
 
-1. Apakah target skor default 1000 sudah tepat, dan siapa yang mengatur target di awal (pembuat sesi atau semua pemain)?
-2. Apakah pemain yang keluar lalu kembali setelah 60 detik sebaiknya bisa tetap ikut sebagai pemain, atau sesi langsung dibatalkan?
-3. Apakah konfirmasi susunan perlu bisa diubah lagi selama pemain lain belum konfirmasi?
+1. **Target skor diatur di awal.** Pemain yang sudah masuk boleh mengatur target selama ronde pertama belum selesai. Nilainya 100 sampai 5000.
+2. **Pemain yang kembali setelah 60 detik.** Sesi dibatalkan. Pemain tidak bisa lanjut setelah batas waktu.
+3. **Konfirmasi susunan tidak bisa diubah** setelah diklik, selama pemain lain belum konfirmasi.

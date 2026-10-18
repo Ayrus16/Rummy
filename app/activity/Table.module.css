@@ -201,3 +201,28 @@
   align-items: center;
   margin-right: 6px;
 }
+
+.target {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.target input {
+  width: 96px;
+}
+
+.history {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+
+.history th,
+.history td {
+  padding: 4px 6px;
+  text-align: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}

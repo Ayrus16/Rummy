@@ -175,3 +175,28 @@ test("joker is determined as soon as the first round ends", () => {
   expect(room.board()!.jokerRank).not.toBeNull();
   expect(room.board()!.stock.length).toBe(19);
 });
+
+test("target can be set before the first round and is refused outside the range", () => {
+  const room = newRoom();
+  room.handle(0, { type: "set_target", target: 500 });
+  expect(room.session.target).toBe(500);
+  expect(() => room.handle(0, { type: "set_target", target: 99 })).toThrow("INVALID_TARGET");
+  expect(() => room.handle(0, { type: "set_target", target: 5001 })).toThrow("INVALID_TARGET");
+});
+
+test("target locks after a round and each round is recorded in history", () => {
+  const room = createRoom(["bot:1", "bot:2", "bot:3", "bot:4"], {
+    target: 1000,
+    disconnectTimeoutMs: TIMEOUT_MS,
+    rng: () => 0.5,
+    botDelayMs: 1,
+  });
+  for (let step = 0; step < 5_000 && room.session.rounds === 0; step++) {
+    vi.advanceTimersByTime(1);
+    room.tick();
+  }
+  expect(room.session.rounds).toBeGreaterThan(0);
+  expect(room.history.length).toBe(room.session.rounds);
+  expect(room.history[0].scores).toHaveLength(4);
+  expect(() => room.handle(0, { type: "set_target", target: 500 })).toThrow("TARGET_LOCKED");
+});
