@@ -10,6 +10,11 @@ export interface RoundResult {
   closingCard: Card | null;
 }
 
+export interface Cekih {
+  caller: PlayerId;
+  target: PlayerId;
+}
+
 export interface RoundState {
   hands: Card[][];
   stock: Card[];
@@ -22,6 +27,10 @@ export interface RoundState {
   table: Card[][][];
   penalties: number[];
   result: RoundResult | null;
+  cekih: Cekih[];
+  discardOwner: Record<string, PlayerId>;
+  pickedFromDiscard: boolean[];
+  takenOwners: PlayerId[];
 }
 
 const CLOSED_FROM_STOCK_BONUS = 250;
@@ -80,6 +89,8 @@ export function pickFromDiscard(
     laidPureSeri,
     phase: "discard",
     drewFrom: "discard",
+    pickedFromDiscard: state.pickedFromDiscard.map((flag, seat) => (seat === player ? true : flag)),
+    takenOwners: taken.map((card) => state.discardOwner[card.id]),
   };
 }
 
@@ -107,7 +118,14 @@ export function discardCard(state: RoundState, player: PlayerId, card: Card): Ro
     cards: [...state.discard.cards, card],
     closedIndex: isJoker ? state.discard.cards.length : state.discard.closedIndex,
   };
-  const next = { ...state, hands: withHand(state, player, hand), discard, penalties };
+  const next = {
+    ...state,
+    hands: withHand(state, player, hand),
+    discard,
+    penalties,
+    discardOwner: { ...state.discardOwner, [card.id]: player },
+    takenOwners: [],
+  };
 
   const closed = checkClosed(state, player, card);
   if (closed) return { ...next, result: closed };

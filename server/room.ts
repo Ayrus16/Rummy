@@ -1,4 +1,5 @@
 import { baseValue, makeDeck, shuffle, type Card, type Rank } from "../src/rules/cards";
+import type { Cekih } from "../src/rules/turn";
 import { HAND_SIZE, deal } from "../src/rules/deal";
 import {
   openingDiscard,
@@ -118,6 +119,7 @@ export interface Board {
   phase: "opening" | "draw" | "discard";
   drewFrom: "stock" | "discard" | null;
   result: RoundResult | null;
+  cekih: Cekih[];
 }
 
 // Batas langkah bot per request. Bot hanya jalan saat jatuh tempo, jadi ini sekadar pengaman.
@@ -257,6 +259,7 @@ export class Room {
         phase: r.phase,
         drewFrom: r.drewFrom,
         result: r.result,
+        cekih: r.cekih,
       };
     }
     if (this.opening === null) return null;
@@ -273,6 +276,7 @@ export class Room {
       phase: "opening",
       drewFrom: null,
       result: null,
+      cekih: [],
     };
   }
 
@@ -364,6 +368,12 @@ export class Room {
       table: [[], [], [], []],
       penalties: resolved.penalties,
       result: null,
+      cekih: [],
+      discardOwner: Object.fromEntries(
+        this.opening!.discard.cards.map((card, i) => [card.id, this.openingOrder()[i]]),
+      ),
+      pickedFromDiscard: [false, false, false, false],
+      takenOwners: [],
     };
     this.opening = null;
     this.status = "playing";

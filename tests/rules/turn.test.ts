@@ -25,6 +25,10 @@ function round(over: Partial<RoundState> = {}): RoundState {
     table: [[], [], [], []],
     penalties: [0, 0, 0, 0],
     result: null,
+    cekih: [],
+    discardOwner: {},
+    pickedFromDiscard: [false, false, false, false],
+    takenOwners: [],
     ...over,
   };
 }
@@ -151,4 +155,26 @@ test("cards above the target can join the meld, the rest go to hand", () => {
   expect(out.discard.cards.length).toBe(0);
   // 9C ikut terambil karena di atas target, tapi tidak masuk kombinasi, jadi masuk tangan.
   expect(ids(out.hands[0])).toEqual(["9C", "9S"]);
+});
+
+test("discarding records the discarder as owner of that card", () => {
+  const s = round({
+    hands: [[c("2H"), c("9S")], [], [], []],
+    phase: "discard",
+    drewFrom: "stock",
+  });
+  const out = discardCard(s, 0, c("9S"));
+  expect(out.discardOwner["9S"]).toBe(0);
+});
+
+test("pickup marks the player and records owners of the taken cards", () => {
+  const s = round({
+    hands: [[c("2H"), c("3H"), c("9S")], [], [], []],
+    discard: { cards: [c("AD"), c("4H"), c("9C")], closedIndex: null },
+    discardOwner: { AD: 1, "4H": 2, "9C": 3 },
+    laidPureSeri: [true, false, false, false],
+  });
+  const out = pickFromDiscard(s, 0, c("4H"), [c("2H"), c("3H")]);
+  expect(out.pickedFromDiscard[0]).toBe(true);
+  expect(out.takenOwners).toEqual([2, 3]);
 });

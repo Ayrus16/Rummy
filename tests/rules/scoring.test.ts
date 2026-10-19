@@ -20,6 +20,10 @@ function round(over: Partial<RoundState> = {}): RoundState {
     table: [[], [], [], []],
     penalties: [0, 0, 0, 0],
     result: null,
+    cekih: [],
+    discardOwner: {},
+    pickedFromDiscard: [false, false, false, false],
+    takenOwners: [],
     ...over,
   };
 }
