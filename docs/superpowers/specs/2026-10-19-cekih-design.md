@@ -20,7 +20,7 @@ Aturan ini melengkapi `Spesifikasi Aturan Remi Indonesia.md`. Bagian yang beruba
 
 ### 1. Syarat menyebut cekih
 
-Pemain boleh menyebut cekih ke satu pemain lain, kapan saja di ronde, kalau tangannya tinggal satu kartu lagi untuk menutup. Secara formal, syarat ini terpenuhi jika ada kartu X dari 52 kartu dan satu kartu c di tangan sehingga tangan setelah ditambah X dan dikurangi c bisa dibentuk seluruhnya menjadi kombinasi sah (seri, tris, atau keduanya dengan joker).
+Pemain boleh menyebut cekih ke satu pemain lain, kapan saja di ronde, kalau tangannya tinggal satu kartu lagi untuk menutup. Secara formal, syarat ini terpenuhi jika ada kartu X dari 52 kartu (yang tidak ada di tangan) sehingga tangan setelah ditambah X bisa dibentuk seluruhnya menjadi kombinasi sah (seri, tris, atau keduanya dengan joker). Kartu penutup diambil dari buangan saat penutupan, bukan dari tangan.
 
 Pemain tidak boleh menyebut cekih ke dirinya sendiri, dan tidak boleh menyebut cekih kalau syaratnya tidak terpenuhi.
 
