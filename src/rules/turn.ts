@@ -1,6 +1,6 @@
 import { baseValue, type Card, type Rank } from "./cards";
 import { classify } from "./combos";
-import { pickableFromDiscard } from "./discard";
+import { pickableFromDiscard, pickupRefusal } from "./discard";
 import { canPartition, removeCards } from "./partition";
 import type { DiscardPile, PlayerId } from "./opening";
 
@@ -68,7 +68,7 @@ export function pickFromDiscard(
 ): RoundState {
   assertTurn(state, player, "draw");
   const taken = pickableFromDiscard(state.discard, target);
-  if (taken === null) throw new Error("PICKUP_BLOCKED");
+  if (taken === null) throw new Error(pickupRefusal(state.discard, target));
   if (handCards.length < 2) throw new Error("INVALID_MELD");
   const above = taken.filter((card) => card.id !== target.id);
   if (!fromDiscard.every((card) => above.some((a) => a.id === card.id))) throw new Error("INVALID_MELD");

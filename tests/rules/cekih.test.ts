@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import type { Card, Rank } from "../../src/rules/cards";
 import { callCekih, canCallCekih, cancelCekih } from "../../src/rules/cekih";
-import { discardCard, pickFromDiscard, type RoundState } from "../../src/rules/turn";
+import type { RoundState } from "../../src/rules/turn";
 
 function c(id: string): Card {
   return { id, rank: id.slice(0, -1) as Rank, suit: id.slice(-1) as Card["suit"] };

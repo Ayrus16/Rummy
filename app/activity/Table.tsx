@@ -425,15 +425,21 @@ export function Table({ view, error, onIntent }: TableProps) {
             <div className={styles.label}>Kartu di atas target boleh ikut dibentuk jadi kombinasi. Klik untuk memilih.</div>
           )}
           <div className={styles.row}>
-            {board?.discard.cards.map((card, index) => (
-              <CardFace
-                key={card.id}
-                card={card}
-                selected={pickupTarget === card.id || pickupExtra.includes(card.id)}
-                disabled={!playable || !drawPhase || (board.discard.closedIndex !== null && index <= board.discard.closedIndex)}
-                onClick={() => discardClick(card.id, index)}
-              />
-            ))}
+            {board?.discard.cards.map((card, index) =>
+              "hidden" in card ? (
+                <button key={card.id} type="button" className={`${styles.card} ${styles.faceDown}`} disabled>
+                  ?
+                </button>
+              ) : (
+                <CardFace
+                  key={card.id}
+                  card={card}
+                  selected={pickupTarget === card.id || pickupExtra.includes(card.id)}
+                  disabled={!playable || !drawPhase || (board.discard.closedIndex !== null && index <= board.discard.closedIndex)}
+                  onClick={() => discardClick(card.id, index)}
+                />
+              ),
+            )}
           </div>
         </div>
       </section>

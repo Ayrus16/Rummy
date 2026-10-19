@@ -732,3 +732,10 @@
   box-shadow: none;
   cursor: not-allowed;
 }
+
+/* Kartu joker di buangan: tertutup, tidak menunjukkan angka atau bunga. */
+.faceDown {
+  background: repeating-linear-gradient(45deg, #1d4ed8 0 6px, #1e40af 6px 12px);
+  color: rgb(255 255 255 / 0.85);
+  font-weight: 700;
+}

@@ -25,6 +25,8 @@ const MESSAGES: Record<string, string> = {
 
   // Ambil dan turunkan
   PICKUP_BLOCKED: "Kartu itu tidak bisa diambil, karena terhalang joker yang dibuang.",
+  PICKUP_TOO_DEEP: "Kartu itu terlalu dalam di buangan. Hanya 7 kartu teratas yang bisa diambil.",
+  CARD_NOT_IN_PILE: "Kartu itu tidak ada di buangan.",
   NEED_PURE_SERI: "Pengambilan pertama harus membentuk seri murni (bunga sama, tanpa joker).",
   INVALID_MELD: "Kartu yang dipilih tidak membentuk kombinasi yang sah.",
   NOT_PURE_SERI: "Yang bisa diturunkan ke meja hanya seri murni.",

@@ -180,3 +180,13 @@ test("pickup marks the player and records owners of the taken cards", () => {
   expect(out.pickedFromDiscard[0]).toBe(true);
   expect(out.takenOwners).toEqual([2, 3]);
 });
+
+test("pickup from deeper than seven cards is refused as too deep, not as blocked", () => {
+  const pile = Array.from({ length: 9 }, (_, i) => c(`${i + 2}S`));
+  const s = round({
+    hands: [[c("QH"), c("QD"), c("3H")], [], [], []],
+    discard: { cards: pile, closedIndex: null },
+    laidPureSeri: [true, false, false, false],
+  });
+  expect(() => pickFromDiscard(s, 0, c("2S"), [c("QH"), c("QD")])).toThrow("PICKUP_TOO_DEEP");
+});

@@ -1,14 +1,26 @@
 import type { Card, Rank } from "../src/rules/cards";
-import type { DiscardPile, PlayerId } from "../src/rules/opening";
+import type { PlayerId } from "../src/rules/opening";
 import type { Cekih, RoundResult } from "../src/rules/turn";
 import { BOT_PREFIX, type HistoryEntry, type Room, type RoomStatus, type RoundDetail } from "./room";
 import type { Arrangement } from "../src/rules/scoring";
 
 // Isi cangkulan dan tangan lawan tidak pernah dikirim; hanya jumlahnya.
+// Kartu buangan yang tertutup (joker) hanya dikirim sebagai id. Angka dan bunganya tidak dikirim ke pemain lain.
+export interface HiddenCard {
+  id: string;
+  hidden: true;
+}
+
+export type PublicCard = Card | HiddenCard;
+
+export function maskDiscard(cards: Card[], jokerRank: Rank | null): PublicCard[] {
+  return cards.map((card) => (jokerRank !== null && card.rank === jokerRank ? { id: card.id, hidden: true as const } : card));
+}
+
 export interface PublicBoard {
   jokerRank: Rank | null;
   stockCount: number;
-  discard: DiscardPile;
+  discard: { cards: PublicCard[]; closedIndex: number | null };
   table: Card[][][];
   penalties: number[];
   laidPureSeri: boolean[];
@@ -81,7 +93,7 @@ export function viewFor(room: Room, seat: PlayerId): PlayerView {
     board: board && {
       jokerRank: board.jokerRank,
       stockCount: board.stock.length,
-      discard: board.discard,
+      discard: { cards: maskDiscard(board.discard.cards, board.jokerRank), closedIndex: board.discard.closedIndex },
       table: board.table,
       penalties: board.penalties,
       laidPureSeri: board.laidPureSeri,

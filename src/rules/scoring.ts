@@ -45,9 +45,20 @@ export function seatScore(state: RoundState, seat: number, arrangement: Arrangem
 }
 
 export function scoreRound(state: RoundState): number[] {
-  return state.hands.map((hand, seat) =>
-    seatScore(state, seat, handArrangement(hand, state.jokerRank, canUseJokerMelds(hand, state.laidPureSeri[seat], state.jokerRank))),
+  const arrangements = state.hands.map((hand, seat) =>
+    handArrangement(hand, state.jokerRank, canUseJokerMelds(hand, state.laidPureSeri[seat], state.jokerRank)),
   );
+  return finalScores(state, arrangements);
+}
+
+// Skor akhir ronde. Tutup tangan (tidak pernah mengambil dari buangan): penutup dapat bonus, yang lain 0,
+// dan kartu tidak dihitung sama sekali.
+export function finalScores(state: RoundState, arrangements: Arrangement[]): number[] {
+  const closer = state.result?.closedBy;
+  if (typeof closer === "number" && !state.pickedFromDiscard[closer]) {
+    return state.hands.map((_, seat) => (seat === closer ? state.result!.bonus : 0));
+  }
+  return arrangements.map((arrangement, seat) => seatScore(state, seat, arrangement));
 }
 
 export function meldValue(meld: Card[], jokerRank: Rank | null): number {

@@ -1,6 +1,7 @@
 import { baseValue, makeDeck, shuffle, type Card, type Rank } from "../src/rules/cards";
 import type { Cekih } from "../src/rules/turn";
 import { callCekih, cancelCekih } from "../src/rules/cekih";
+import { chooseBotPlay } from "../src/rules/bot";
 import { HAND_SIZE, deal } from "../src/rules/deal";
 import {
   openingDiscard,
@@ -13,10 +14,10 @@ import {
 import {
   canUseJokerMelds,
   containsJoker,
+  finalScores,
   handArrangement,
   loneValue,
   meldValue,
-  seatScore,
   validateArrangement,
   type Arrangement,
 } from "../src/rules/scoring";
@@ -443,7 +444,7 @@ export class Room {
   private finishRound(): void {
     const round = this.round!;
     const arrangements = this.scoringArrangement!;
-    const scores = round.hands.map((_, seat) => seatScore(round, seat, arrangements[seat]));
+    const scores = finalScores(round, arrangements);
     this.roundDetail = arrangements.map((arrangement, seat) => {
       const closed = round.result?.closedBy === seat ? round.result.bonus : 0;
       return {
@@ -542,7 +543,12 @@ export class Room {
     try {
       this.handle(seat, this.chooseBotIntent(seat));
     } catch {
-      // Bot tidak menemukan langkah sah (jarang terjadi). Sesi menunggu, tidak dipaksa.
+      // Langkah utama ditolak: coba langkah paling aman. Kalau tetap gagal, sesi menunggu, tidak dipaksa.
+      try {
+        this.handle(seat, this.fallbackBotIntent(seat));
+      } catch {
+        // Tidak ada langkah sah.
+      }
     }
   }
 
@@ -554,7 +560,13 @@ export class Room {
       const card = mostValuable(hand.filter((c) => !used.has(c.rank))) ?? hand[0];
       return { type: "opening_discard", cardId: card.id };
     }
-    const round = this.round!;
+    return chooseBotPlay(this.round!, seat);
+  }
+
+  // Langkah cadangan kalau strategi utama ditolak: ambil cangkulan, lalu buang kartu bernilai tertinggi.
+  private fallbackBotIntent(seat: PlayerId): Intent {
+    if (this.status !== "playing" || this.round === null) return this.chooseBotIntent(seat);
+    const round = this.round;
     if (round.phase === "draw") return { type: "draw_stock" };
     const hand = round.hands[seat];
     const card = mostValuable(hand.filter((c) => !isJoker(c, round.jokerRank))) ?? hand[0];

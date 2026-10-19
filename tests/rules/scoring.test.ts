@@ -114,3 +114,22 @@ test("joker meld counts plus when the hand holds a pure seri, without laying it 
   const s = round({ jokerRank: "5", hands: [hand, [], [], []], laidPureSeri: [false, false, false, false] });
   expect(scoreRound(s)[0]).toBe(30);
 });
+
+test("tutup tangan: the closer gets 250 and everyone else gets 0, no card scoring", () => {
+  // Tutup dari cangkulan saja (tidak pernah mengambil dari buangan): hanya +250 untuk penutup.
+  const s = round({
+    hands: [[c("2H"), c("3H"), c("4H"), c("KS")], [c("7C"), c("KD")], [], []],
+    result: { closedBy: 0, bonus: 250, closingCard: c("KS"), cekihTarget: null, cekihPenalty: 0 },
+    pickedFromDiscard: [false, false, false, false],
+    penalties: [0, -50, 0, 0],
+  });
+  expect(scoreRound(s)).toEqual([250, 0, 0, 0]);
+});
+
+test("the arrangement prefers a pure seri over a joker seri when the joker count ties", () => {
+  // Joker = 6. 7C 8C 9C adalah seri murni. 4D 4S 6D(joker) 6H(joker): 789+6 dan 44+6+6 bernilai sama,
+  // tetapi susunan yang memakai seri murni 789 harus dipilih.
+  const hand = ["6D", "6H", "4D", "4S", "7C", "8C", "9C"].map(c);
+  const arr = handArrangement(hand, "6", true);
+  expect(arr.melds.some((meld) => meld.map((card) => card.id).sort().join(",") === "7C,8C,9C")).toBe(true);
+});

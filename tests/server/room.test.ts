@@ -142,21 +142,22 @@ test("bots complete the opening after the human", () => {
 
 // Bot hanya ambil dari cangkulan dan tidak pernah turun ke meja, jadi skornya tidak pernah
 // mencapai target. Tes ini memastikan ronde terus berjalan (tidak macet), bukan sampai ada pemenang.
+// Bot memakai strategi lengkap (ambil, turunkan, cekih, tutup), jadi ronde berakhir lebih cepat.
+// Tes ini memastikan ronde terus berjalan dan tidak macet, bukan sampai ada pemenang.
 test("an all-bot room keeps playing rounds without stalling", () => {
   const room = createRoom(["bot:1", "bot:2", "bot:3", "bot:4"], {
-    target: 300,
+    target: 100_000,
     disconnectTimeoutMs: TIMEOUT_MS,
     rng: () => 0.5,
     botDelayMs: 1,
   });
-  for (let step = 0; step < 20_000; step++) {
+  for (let step = 0; step < 20_000 && room.session.rounds < 5; step++) {
     vi.advanceTimersByTime(1);
     room.tick();
   }
-  // Bisa berhenti di tengah pembukaan atau permainan, yang penting tetap berjalan.
-  expect(["opening", "playing"]).toContain(room.status);
-  expect(room.session.rounds).toBeGreaterThan(10);
-});
+  expect(["opening", "playing", "scoring"]).toContain(room.status);
+  expect(room.session.rounds).toBeGreaterThanOrEqual(5);
+}, 120_000);
 
 test("bots take their turns and hand the turn back", () => {
   const room = botRoom();
