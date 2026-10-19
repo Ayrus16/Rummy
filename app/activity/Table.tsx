@@ -389,6 +389,16 @@ export function Table({ view, error, onIntent }: TableProps) {
           </button>
         </section>
       )}
+      {view.revealed !== null && view.status === "scoring" && (
+        <section className={styles.detail}>
+          <div className={styles.label}>Tangan {nameOf(view.revealed.seat)} (penutup), bisa dicek semua pemain</div>
+          <div className={styles.row}>
+            {view.revealed.cards.map((card) => (
+              <CardFace key={card.id} card={card} disabled />
+            ))}
+          </div>
+        </section>
+      )}
       {error && <p className={styles.error}>{error}</p>}
 
       <section className={styles.opponents}>

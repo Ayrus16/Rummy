@@ -1,7 +1,7 @@
 import type { Card, Rank } from "../src/rules/cards";
 import type { PlayerId } from "../src/rules/opening";
 import type { Cekih, RoundResult } from "../src/rules/turn";
-import { BOT_PREFIX, type HistoryEntry, type Room, type RoomStatus, type RoundDetail } from "./room";
+import { BOT_PREFIX, type Board, type HistoryEntry, type Room, type RoomStatus, type RoundDetail } from "./room";
 import type { Arrangement } from "../src/rules/scoring";
 
 // Isi cangkulan dan tangan lawan tidak pernah dikirim; hanya jumlahnya.
@@ -12,6 +12,18 @@ export interface HiddenCard {
 }
 
 export type PublicCard = Card | HiddenCard;
+
+export interface RevealedHand {
+  seat: number;
+  cards: Card[];
+}
+
+// Tangan pemain penutup (tutup atau tutup tangan) ditampilkan ke semua pemain. Null jika tidak ada penutup.
+export function revealedCloser(board: Board | null): RevealedHand | null {
+  if (board === null || board.result === null || typeof board.result.closedBy !== "number") return null;
+  const seat = board.result.closedBy;
+  return { seat, cards: board.hands[seat] };
+}
 
 export function maskDiscard(cards: Card[], jokerRank: Rank | null): PublicCard[] {
   return cards.map((card) => (jokerRank !== null && card.rank === jokerRank ? { id: card.id, hidden: true as const } : card));
@@ -55,6 +67,8 @@ export interface PlayerView {
   roundDetail: RoundDetail[] | null;
   // Riwayat skor per ronde, dari ronde pertama.
   history: HistoryEntry[];
+  // Saat fase penyusunan: seluruh tangan pemain penutup, supaya bisa dicek semua pemain.
+  revealed: RevealedHand | null;
   // Fase penyusunan: siapa yang sudah konfirmasi, dan susunan tangan kita sendiri.
   scoring: { confirmed: boolean[]; mine: Arrangement | null } | null;
   pausedSeat: PlayerId | null;
@@ -85,6 +99,7 @@ export function viewFor(room: Room, seat: PlayerId): PlayerView {
     lastRoundScores: room.lastRoundScores,
     roundDetail: room.roundDetail,
     history: room.history,
+    revealed: room.status === "scoring" ? revealedCloser(board) : null,
     scoring:
       room.status === "scoring"
         ? { confirmed: [...room.scoringConfirmed], mine: room.scoringArrangement?.[seat] ?? null }
