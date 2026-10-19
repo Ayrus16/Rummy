@@ -110,7 +110,13 @@ Ronde berakhir dengan salah satu dari dua cara: ada pemain yang closed, atau can
 | Cara closed | Bonus untuk pemain yang closed |
 | --- | --- |
 | Mengambil dari cangkulan | +250 |
-| Mengambil dari buangan | +10× nilai kartu penutup |
+
+**Cekih**
+
+- Pemain boleh menyebut cekih ke pemain lain kapan saja di ronde, saat tangannya tinggal satu kartu lagi untuk menutup. Cekih bisa dibatalkan kapan saja sampai ronde selesai.
+- Cekih hanya memberi bonus dan hukuman jika penutupan adalah tutup biasa (pernah mengambil dari buangan) dan kartu yang diambil pada giliran penutupan termasuk kartu yang dibuang pemain tercekih.
+- Pemain penutup mendapat +10× nilai kartu penutup. Pemain tercekih mendapat −10× nilai kartu penutup.
+- Hanya cekih milik pemain penutup yang dihitung.
 
 **Cangkulan habis**
 
