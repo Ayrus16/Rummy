@@ -1,5 +1,6 @@
 import { baseValue, makeDeck, shuffle, type Card, type Rank } from "../src/rules/cards";
 import type { Cekih } from "../src/rules/turn";
+import { callCekih, cancelCekih } from "../src/rules/cekih";
 import { HAND_SIZE, deal } from "../src/rules/deal";
 import {
   openingDiscard,
@@ -37,6 +38,9 @@ export type Intent =
   | { type: "pickup"; targetId: string; handIds: string[]; discardIds?: string[] }
   | { type: "lay_down"; cardIds: string[] }
   | { type: "discard"; cardId: string }
+  // Cekih: pemain tercekih boleh dibatalkan oleh pemain penyebut kapan saja sampai ronde selesai.
+  | { type: "cekih"; target: number }
+  | { type: "cekih_batal"; target: number }
   // Ditangani di worker (membuat ruang baru), bukan di Room.handle.
   | { type: "reset" }
   // Hanya saat fase penyusunan (status "scoring"): susunan kombinasi tangan lalu konfirmasi.
@@ -334,6 +338,12 @@ export class Room {
           seat,
           intent.cardIds.map((id) => findCard(round.hands[seat], id)),
         );
+        break;
+      case "cekih":
+        this.round = callCekih(round, seat, intent.target as PlayerId);
+        break;
+      case "cekih_batal":
+        this.round = cancelCekih(round, seat, intent.target as PlayerId);
         break;
       case "discard":
         this.round = discardCard(round, seat, findCard(round.hands[seat], intent.cardId));
