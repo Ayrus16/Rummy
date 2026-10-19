@@ -251,3 +251,9 @@ test("cekih_batal intent is refused when no cekih exists", () => {
   playOpening(room);
   expect(() => room.handle(0, { type: "cekih_batal", target: 2 })).toThrow("CEKIH_NOT_FOUND");
 });
+
+test("view exposes active cekih on the board", () => {
+  const room = newRoom();
+  playOpening(room);
+  expect(viewFor(room, 0).board!.cekih).toEqual([]);
+});

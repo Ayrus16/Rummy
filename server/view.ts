@@ -1,6 +1,6 @@
 import type { Card, Rank } from "../src/rules/cards";
 import type { DiscardPile, PlayerId } from "../src/rules/opening";
-import type { RoundResult } from "../src/rules/turn";
+import type { Cekih, RoundResult } from "../src/rules/turn";
 import { BOT_PREFIX, type HistoryEntry, type Room, type RoomStatus, type RoundDetail } from "./room";
 import type { Arrangement } from "../src/rules/scoring";
 
@@ -16,6 +16,8 @@ export interface PublicBoard {
   phase: "opening" | "draw" | "discard";
   drewFrom: "stock" | "discard" | null;
   result: RoundResult | null;
+  // Cekih aktif di ronde ini. Terlihat semua pemain agar permainan transparan.
+  cekih: Cekih[];
 }
 
 // Informasi tampilan tiap kursi: nama, avatar, dan jenisnya.
@@ -87,6 +89,7 @@ export function viewFor(room: Room, seat: PlayerId): PlayerView {
       phase: board.phase,
       drewFrom: board.drewFrom,
       result: board.result,
+      cekih: board.cekih,
     },
     hand: board ? board.hands[seat] : [],
     handCounts: board ? board.hands.map((hand) => hand.length) : [0, 0, 0, 0],
