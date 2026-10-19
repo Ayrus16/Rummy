@@ -190,3 +190,26 @@ test("pickup from deeper than seven cards is refused as too deep, not as blocked
   });
   expect(() => pickFromDiscard(s, 0, c("2S"), [c("QH"), c("QD")])).toThrow("PICKUP_TOO_DEEP");
 });
+
+test("closing without any pure seri is refused", () => {
+  // Joker = 9. 8H 8S 9D(joker) + KD: tris dengan joker, tanpa seri murni. Tidak boleh menutup.
+  const s = round({
+    hands: [[c("8H"), c("8S"), c("9D"), c("KD")], [], [], []],
+    stock: [c("2C")],
+    jokerRank: "9",
+    phase: "discard",
+    drewFrom: "stock",
+  });
+  expect(discardCard(s, 0, c("KD")).result).toBeNull();
+});
+
+test("closing with a pure seri in hand is allowed", () => {
+  const s = round({
+    hands: [[c("2H"), c("3H"), c("4H"), c("8H"), c("8S"), c("9D"), c("KD")], [], [], []],
+    stock: [c("2C")],
+    jokerRank: "9",
+    phase: "discard",
+    drewFrom: "stock",
+  });
+  expect(discardCard(s, 0, c("KD")).result?.closedBy).toBe(0);
+});

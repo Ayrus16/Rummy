@@ -3,6 +3,7 @@ import { canCallCekih } from "./cekih";
 import type { PlayerId } from "./opening";
 import { canPartition, removeCards } from "./partition";
 import { subsets } from "./subsets";
+import { hasPureSeri } from "./scoring";
 import { layDownPureSeri, pickFromDiscard, type RoundState } from "./turn";
 
 // Bentuk intent yang sama dengan intent pemain di server. Disimpan di sini supaya strategi bot tidak bergantung server.
@@ -65,7 +66,10 @@ function cekihChoice(round: RoundState, seat: PlayerId): BotIntent | null {
 // membuat pemain yang sudah mencekih bisa menutup.
 function discardChoice(round: RoundState, seat: PlayerId): BotIntent {
   const hand = round.hands[seat];
-  const closing = hand.find((card) => canPartition(removeCards(hand, [card]), round.jokerRank));
+  const closing = hand.find((card) => {
+    const rest = removeCards(hand, [card]);
+    return canPartition(rest, round.jokerRank) && (round.laidPureSeri[seat] || hasPureSeri(rest, round.jokerRank));
+  });
   if (closing) return { type: "discard", cardId: closing.id };
 
   const threats = round.cekih.filter((c) => c.target === seat).map((c) => c.caller);

@@ -2,6 +2,7 @@ import { baseValue, type Card, type Rank } from "./cards";
 import { classify } from "./combos";
 import { pickableFromDiscard, pickupRefusal } from "./discard";
 import { canPartition, removeCards } from "./partition";
+import { hasPureSeri } from "./scoring";
 import type { DiscardPile, PlayerId } from "./opening";
 
 export interface RoundResult {
@@ -152,6 +153,8 @@ export function discardCard(state: RoundState, player: PlayerId, card: Card): Ro
 export function checkClosed(state: RoundState, player: PlayerId, card: Card): RoundResult | null {
   const rest = removeCards(state.hands[player], [card]);
   if (!canPartition(rest, state.jokerRank)) return null;
+  // Menutup (tutup atau tutup tangan) harus punya seri murni: sudah diturunkan, atau ada di tangan.
+  if (!state.laidPureSeri[player] && !hasPureSeri(rest, state.jokerRank)) return null;
   // Tutup tangan: tidak pernah mengambil dari buangan di ronde ini. Bonus 250, tanpa efek cekih.
   if (!state.pickedFromDiscard[player]) {
     return { closedBy: player, bonus: CLOSED_FROM_STOCK_BONUS, closingCard: card, cekihTarget: null, cekihPenalty: 0 };
