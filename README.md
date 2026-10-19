@@ -34,7 +34,7 @@ pnpm worker:secret   # isi dengan bot token dari Developer Portal -> Bot
 
 **Web (Vercel)**
 
-Import repo ke Vercel, lalu isi environment variable: `NEXT_PUBLIC_DISCORD_CLIENT_ID`, `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, dan `NEXT_PUBLIC_ALLOW_BOTS` (opsional, untuk testing dengan sedikit akun).
+Import repo ke Vercel, lalu isi environment variable: `NEXT_PUBLIC_DISCORD_CLIENT_ID`, `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`. Bot untuk testing tidak perlu env, cukup tekan tombol Tambah bot di dalam Activity.
 
 **Discord Developer Portal** (Activities -> URL Mappings)
 

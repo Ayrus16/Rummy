@@ -1,7 +1,7 @@
 import type { Card, Rank } from "../src/rules/cards";
 import type { DiscardPile, PlayerId } from "../src/rules/opening";
 import type { RoundResult } from "../src/rules/turn";
-import type { HistoryEntry, Room, RoomStatus, RoundDetail } from "./room";
+import { BOT_PREFIX, type HistoryEntry, type Room, type RoomStatus, type RoundDetail } from "./room";
 import type { Arrangement } from "../src/rules/scoring";
 
 // Isi cangkulan dan tangan lawan tidak pernah dikirim; hanya jumlahnya.
@@ -18,7 +18,17 @@ export interface PublicBoard {
   result: RoundResult | null;
 }
 
+// Informasi tampilan tiap kursi: nama, avatar, dan jenisnya.
+export interface PlayerInfo {
+  kind: "human" | "bot" | "empty";
+  name: string;
+  avatarUrl: string | null;
+}
+
+const BOT_AVATAR = "/bot-avatar.svg";
+
 export interface PlayerView {
+  players: PlayerInfo[];
   status: RoomStatus;
   you: PlayerId;
   seats: string[];
@@ -39,9 +49,18 @@ export interface PlayerView {
   handCounts: number[];
 }
 
+function playerInfo(room: Room, seat: number): PlayerInfo {
+  const id = room.seats[seat];
+  if (id === "") return { kind: "empty", name: "Kosong", avatarUrl: null };
+  if (id.startsWith(BOT_PREFIX)) return { kind: "bot", name: `Bot ${seat + 1}`, avatarUrl: BOT_AVATAR };
+  const profile = room.profiles[seat];
+  return { kind: "human", name: profile?.name ?? "Pemain", avatarUrl: profile?.avatarUrl ?? null };
+}
+
 export function viewFor(room: Room, seat: PlayerId): PlayerView {
   const board = room.board();
   return {
+    players: room.seats.map((_, i) => playerInfo(room, i)),
     status: room.status,
     you: seat,
     seats: room.seats,

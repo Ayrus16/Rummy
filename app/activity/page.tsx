@@ -19,9 +19,6 @@ export default function ActivityPage() {
   useEffect(() => {
     let cancelled = false;
 
-    // Mode testing: NEXT_PUBLIC_ALLOW_BOTS=1 mengisi kursi kosong dengan bot.
-    const addBots = process.env.NEXT_PUBLIC_ALLOW_BOTS === "1";
-
     async function start() {
       let session;
       try {
@@ -32,7 +29,7 @@ export default function ActivityPage() {
       }
       if (cancelled) return;
 
-      connection.current = connectRoom(session, addBots, {
+      connection.current = connectRoom(session, {
         onView: (next) => {
           setView(next);
           setError(null);

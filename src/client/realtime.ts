@@ -33,7 +33,7 @@ const FATAL_STATUS: Record<number, string> = {
   4002: "Meja sedang dibuka di tab lain.",
 };
 
-export function connectRoom(session: DiscordSession, addBots: boolean, handlers: RoomHandlers): RoomConnection {
+export function connectRoom(session: DiscordSession, handlers: RoomHandlers): RoomConnection {
   let socket: WebSocket | null = null;
   let retry: ReturnType<typeof setTimeout> | undefined;
   let attempt = 0;
@@ -43,7 +43,7 @@ export function connectRoom(session: DiscordSession, addBots: boolean, handlers:
     const current = new WebSocket(roomUrl(session.instanceId));
     socket = current;
     current.onopen = () => {
-      current.send(JSON.stringify({ type: "hello", token: session.accessToken, instanceId: session.instanceId, addBots }));
+      current.send(JSON.stringify({ type: "hello", token: session.accessToken, instanceId: session.instanceId }));
     };
     current.onmessage = (ev) => {
       const msg = JSON.parse(ev.data as string) as ServerMessage;

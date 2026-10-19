@@ -48,7 +48,7 @@ Tujuan utama: 4 orang di satu voice channel bisa memulai dan menyelesaikan satu 
 - Tangan lawan disembunyikan, cangkulan hanya ditampilkan jumlahnya.
 - Verifikasi peserta: anggota instance Activity diambil dari REST Discord, bukan dari klien.
 - Putus lalu sambung lagi: sesi dijeda, dan dibatalkan kalau pemain tidak kembali dalam 60 detik.
-- Bot mengisi kursi kosong untuk testing, dengan `NEXT_PUBLIC_ALLOW_BOTS=1`.
+- Bot untuk testing ditambahkan dari dalam Activity lewat tombol "Tambah bot" saat menunggu pemain. Main sendiri tambah 3 bot, berdua tambah 2, bertiga tambah 1, dan berempat tidak perlu bot.
 - Fase penyusunan setelah ronde: pemain menyusun kombinasi lalu konfirmasi. Hasil menampilkan plus dan minus per kombinasi dan sampah.
 - Reset game dengan konfirmasi dua klik.
 - Urut kartu di tangan (drag-and-drop dan tombol Urutkan).
@@ -81,7 +81,7 @@ Tujuan utama: 4 orang di satu voice channel bisa memulai dan menyelesaikan satu 
 - **Bot token** untuk memanggil REST Discord adalah secret. Kalau bocor, siapa pun bisa membaca data instance Activity. Ganti lewat Developer Portal kalau dicurigai bocor.
 - **Respons endpoint `activity-instances`** (field `users`) berasal dari sumber pihak ketiga. Resmi Discord menyebut endpoint itu butuh bot token. Perlu dicek ulang kalau Discord mengubah API.
 - **Kursi pertama** ditentukan dari urutan peserta yang dikembalikan Discord, bukan dari pilihan pemain.
-- **Pengaturan bot** di environment (`NEXT_PUBLIC_ALLOW_BOTS`) harus dimatikan untuk permainan 4 pemain sungguhan.
+- **Bot** hanya ditambahkan kalau pemain memintanya. Permainan 4 pemain tidak perlu bot.
 - **Konfirmasi susunan** tidak bisa diubah setelah diklik. Ini disengaja untuk menjaga ronde tetap berjalan.
 
 ## Keputusan

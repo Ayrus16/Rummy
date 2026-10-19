@@ -82,7 +82,7 @@ Membuat permainan kartu Remi Indonesia yang bisa dimainkan 4 orang secara online
 4. Tidak ada database terpisah. State ruang disimpan di storage Durable Object.
 5. Sesi dibuat dan dikelola dari dalam Discord Activity, bukan lewat perintah slash bot.
 6. Batas waktu menunggu pemain yang disconnect: 60 detik (`ROOM_OPTIONS.disconnectTimeoutMs` di `worker/worker.ts`). Sudah diuji manual dengan 2 akun: kembali dalam batas waktu melanjutkan permainan, dan lewat batas waktu sesi dibatalkan.
-7. Bot untuk testing: bot mengisi kursi kosong (dengan `addBots` saat membuat ruang) dan memakai intent yang sama dengan pemain, sehingga aturan tetap dijalankan engine. Strateginya sederhana: selalu ambil dari cangkulan, buang kartu bernilai tertinggi (bukan joker), dan tidak pernah mengambil dari buangan. Bot tidak menggantikan pemain yang disconnect; sesi tetap menunggu sampai batas waktu.
+7. Bot untuk testing: pemain yang sudah masuk bisa menekan "Tambah bot" saat menunggu, lalu bot mengisi kursi kosong dan memakai intent yang sama dengan pemain, sehingga aturan tetap dijalankan engine. Strateginya sederhana: selalu ambil dari cangkulan, buang kartu bernilai tertinggi (bukan joker), dan tidak pernah mengambil dari buangan. Bot tidak menggantikan pemain yang disconnect; sesi tetap menunggu sampai batas waktu.
 
 ## Status implementasi (per Oktober 2026)
 
@@ -95,7 +95,7 @@ Membuat permainan kartu Remi Indonesia yang bisa dimainkan 4 orang secara online
 **Yang belum diuji:**
 - Satu ronde penuh sampai skor dan ronde berikutnya di server (scoring lewat Worker).
 - Permainan sampai ada pemenang (status `finished`).
-- Permainan 4 pemain sungguhan tanpa bot (`NEXT_PUBLIC_ALLOW_BOTS` dimatikan).
+- Permainan 4 pemain sungguhan tanpa bot.
 
 **Risiko yang diketahui:**
 - Permainan dengan semua bot tidak pernah mencapai target skor, karena bot tidak mengambil dari buangan dan tidak menurunkan kartu.

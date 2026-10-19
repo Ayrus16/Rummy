@@ -201,3 +201,41 @@ test("target locks after a round and each round is recorded in history", () => {
   expect(room.history[0].scores).toHaveLength(4);
   expect(() => room.handle(0, { type: "set_target", target: 500 })).toThrow("TARGET_LOCKED");
 });
+
+test("room waits for seats, bots fill empty seats, and play starts when full", () => {
+  const room = createRoom(["u0", "", "", ""], {
+    target: 1000,
+    disconnectTimeoutMs: TIMEOUT_MS,
+    rng: () => 0,
+  });
+  expect(room.status).toBe("waiting");
+  expect(() => room.handle(0, { type: "opening_draw" })).toThrow("ROOM_NOT_STARTED");
+  room.handle(0, { type: "add_bots" });
+  expect(room.status).toBe("opening");
+  expect(room.seats).toEqual(["u0", "bot:2", "bot:3", "bot:4"]);
+});
+
+test("a player joining a waiting room takes an empty seat", () => {
+  const room = createRoom(["u0", "", "", ""], {
+    target: 1000,
+    disconnectTimeoutMs: TIMEOUT_MS,
+    rng: () => 0,
+  });
+  expect(room.claimBotSeat("u1")).toBe(1);
+  expect(room.status).toBe("waiting");
+  room.claimBotSeat("u2");
+  room.claimBotSeat("u3");
+  expect(room.status).toBe("opening");
+});
+
+test("view labels empty seats, bots, and humans without a profile", () => {
+  const room = createRoom(["u0", "", "bot:3", "bot:4"], {
+    target: 1000,
+    disconnectTimeoutMs: TIMEOUT_MS,
+    rng: () => 0,
+  });
+  const { players } = viewFor(room, 0);
+  expect(players[0]).toEqual({ kind: "human", name: "Pemain", avatarUrl: null });
+  expect(players[1].kind).toBe("empty");
+  expect(players[2]).toEqual({ kind: "bot", name: "Bot 3", avatarUrl: "/bot-avatar.svg" });
+});

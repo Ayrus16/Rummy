@@ -31,11 +31,10 @@ const MESSAGES: Record<string, string> = {
 
   // Penyusunan dan skor
   INVALID_ARRANGEMENT: "Susunan kombinasi tidak sah. Periksa lagi kombinasinya.",
-  PURE_SERI_REQUIRED: "Kamu belum menurunkan seri murni, jadi kartu di tangan dihitung minus semua.",
   ALREADY_CONFIRMED: "Kamu sudah konfirmasi susunan.",
 
   // Reset
-  RESET_NOT_ALLOWED: "Hanya P1 yang bisa mereset game.",
+  RESET_NOT_ALLOWED: "Hanya pemain pertama yang bisa mereset game.",
 
   // Target
   TARGET_LOCKED: "Target tidak bisa diubah setelah ronde pertama selesai.",

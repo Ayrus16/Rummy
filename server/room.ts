@@ -41,7 +41,9 @@ export type Intent =
   // Hanya saat fase penyusunan (status "scoring"): susunan kombinasi tangan lalu konfirmasi.
   | { type: "confirm"; melds: string[][] }
   // Hanya sebelum ronde pertama selesai. Target 100 sampai 5000.
-  | { type: "set_target"; target: number };
+  | { type: "set_target"; target: number }
+  // Saat menunggu pemain: isi semua kursi kosong dengan bot.
+  | { type: "add_bots" };
 
 export const TARGET_MIN = 100;
 export const TARGET_MAX = 5000;
@@ -53,7 +55,13 @@ export interface HistoryEntry {
   totals: number[];
 }
 
-export type RoomStatus = "opening" | "playing" | "scoring" | "paused" | "cancelled" | "finished";
+// Profil pemain manusia per kursi. Bot tidak punya profil (ditampilkan dengan avatar bot).
+export interface PlayerProfile {
+  name: string;
+  avatarUrl: string;
+}
+
+export type RoomStatus = "waiting" | "opening" | "playing" | "scoring" | "paused" | "cancelled" | "finished";
 
 // Hasil satu pemain untuk ditampilkan: kombinasi (plus) dan sampah (minus).
 export interface RoundDetail {
@@ -87,6 +95,7 @@ export interface RoomSnapshot {
   scoringArrangement: Arrangement[] | null;
   scoringConfirmed: boolean[];
   history: HistoryEntry[];
+  profiles: (PlayerProfile | null)[];
   pausedSeat: PlayerId | null;
   pausedAt: number | null;
   resumeStatus: RoomStatus;
@@ -120,6 +129,7 @@ export class Room {
   scoringArrangement: Arrangement[] | null = null;
   scoringConfirmed: boolean[] = [false, false, false, false];
   history: HistoryEntry[] = [];
+  profiles: (PlayerProfile | null)[] = [null, null, null, null];
   session: SessionState;
   lastRoundScores: number[] | null = null;
   pausedSeat: PlayerId | null = null;
@@ -142,6 +152,8 @@ export class Room {
     this.now = options.now ?? Date.now;
     this.session = { totals: [0, 0, 0, 0], target: options.target, rounds: 0, winner: null };
     this.opening = this.newOpening();
+    // Kursi kosong ("") berarti belum ada pemain. Permainan baru mulai setelah semua kursi terisi.
+    this.status = seats.includes("") ? "waiting" : "opening";
     this.scheduleBot();
   }
 
@@ -161,6 +173,7 @@ export class Room {
     room.scoringArrangement = snapshot.scoringArrangement;
     room.scoringConfirmed = snapshot.scoringConfirmed;
     room.history = snapshot.history;
+    room.profiles = snapshot.profiles ?? [null, null, null, null];
     return room;
   }
 
@@ -181,6 +194,7 @@ export class Room {
       scoringArrangement: this.scoringArrangement,
       scoringConfirmed: [...this.scoringConfirmed],
       history: this.history,
+      profiles: [...this.profiles],
     };
   }
 
@@ -219,7 +233,9 @@ export class Room {
   handle(seat: PlayerId, intent: Intent): void {
     if (this.status === "paused") throw new Error("PAUSED");
     if (this.status === "cancelled" || this.status === "finished") throw new Error("ROOM_CLOSED");
-    if (intent.type === "set_target") this.setTarget(intent.target);
+    if (this.status === "waiting" && intent.type === "add_bots") this.addBots();
+    else if (this.status === "waiting" && intent.type !== "set_target") throw new Error("ROOM_NOT_STARTED");
+    else if (intent.type === "set_target") this.setTarget(intent.target);
     else if (this.status === "scoring") this.handleScoring(seat, intent);
     else if (this.status === "opening") this.handleOpening(seat, intent);
     else this.handlePlay(seat, intent);
@@ -357,10 +373,7 @@ export class Room {
   private endRound(): void {
     const round = this.round!;
     this.status = "scoring";
-    // Kombinasi di tangan hanya dihitung plus kalau pemain sudah pernah menurunkan seri murni. Selebihnya minus semua.
-    this.scoringArrangement = round.hands.map((hand, seat) =>
-      round.laidPureSeri[seat] ? handArrangement(hand, round.jokerRank) : { melds: [], leftover: [...hand] },
-    );
+    this.scoringArrangement = round.hands.map((hand) => handArrangement(hand, round.jokerRank));
     this.scoringConfirmed = [false, false, false, false];
     this.seats.forEach((seatId, seat) => {
       if (seatId.startsWith(BOT_PREFIX)) this.scoringConfirmed[seat] = true;
@@ -377,7 +390,6 @@ export class Room {
   private handleScoring(seat: PlayerId, intent: Intent): void {
     if (intent.type !== "confirm") throw new Error("WRONG_PHASE");
     if (this.scoringConfirmed[seat]) throw new Error("ALREADY_CONFIRMED");
-    if (!this.round!.laidPureSeri[seat] && intent.melds.length > 0) throw new Error("PURE_SERI_REQUIRED");
     const hand = this.round!.hands[seat];
     const melds = intent.melds.map((ids) => ids.map((id) => findCard(hand, id)));
     const arrangement = validateArrangement(hand, melds, this.round!.jokerRank);
@@ -440,9 +452,24 @@ export class Room {
     };
   }
 
+  setProfile(seat: PlayerId, profile: PlayerProfile): void {
+    this.profiles[seat] = profile;
+  }
+
+  setProfiles(profiles: (PlayerProfile | null)[]): void {
+    this.profiles = [...profiles];
+  }
+
   // Pemain yang masuk setelah ruang dibuat boleh mengambil kursi bot yang belum bertindak
   // di pembukaan. Dipakai untuk testing dengan sedikit akun.
   claimBotSeat(userId: string): PlayerId | null {
+    if (this.status === "waiting") {
+      const empty = this.seats.indexOf("");
+      if (empty === -1) return null;
+      this.seats[empty] = userId;
+      this.becomeOpeningIfFull();
+      return empty as PlayerId;
+    }
     if (this.status !== "opening" || this.opening === null) return null;
     const order = this.openingOrder();
     for (let i = this.opening.discard.cards.length; i < order.length; i++) {
@@ -453,6 +480,19 @@ export class Room {
       return seat;
     }
     return null;
+  }
+
+  private addBots(): void {
+    this.seats.forEach((seat, i) => {
+      if (seat === "") this.seats[i] = `${BOT_PREFIX}${i + 1}`;
+    });
+    this.becomeOpeningIfFull();
+  }
+
+  private becomeOpeningIfFull(): void {
+    if (this.status !== "waiting" || this.seats.includes("")) return;
+    this.status = "opening";
+    this.scheduleBot();
   }
 
   // Menjadwalkan langkah bot jika giliran saat ini milik kursi bot. Langkah dijalankan di tick berikutnya

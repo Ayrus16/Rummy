@@ -1,8 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
 import type { PlayerId } from "../src/rules/opening";
 import { verifyDiscordUserId } from "../server/auth";
-import { BOT_PREFIX, createRoom, Room, type Intent, type RoomOptions, type RoomSnapshot } from "../server/room";
+import { createRoom, Room, type Intent, type RoomOptions, type RoomSnapshot } from "../server/room";
 import { viewFor } from "../server/view";
+import { fetchProfile } from "../server/profile";
 
 export interface Env {
   TABLE: DurableObjectNamespace<Table>;
@@ -14,19 +15,16 @@ export interface Env {
 type Attachment = { userId: string; seat: PlayerId };
 
 type ClientMessage =
-  | { type: "hello"; token: string; instanceId: string; addBots: boolean }
+  | { type: "hello"; token: string; instanceId: string }
   | { type: "intent"; intent: Intent };
 
 const ID_RE = /^[\w.:-]{1,200}$/;
 const ROOM_OPTIONS: RoomOptions = { target: 1000, disconnectTimeoutMs: 60_000 };
 
-// Tepat 4 kursi. Kursi kosong diisi bot hanya jika diminta (untuk testing).
-function fillSeats(members: string[], addBots: boolean): string[] {
+// Kursi awal dari peserta yang sudah masuk. Sisanya kosong ("") sampai ada pemain lain atau bot ditambahkan.
+function seatsFrom(members: string[]): string[] {
   if (members.length > 4) throw new Error("TOO_MANY_PLAYERS");
-  if (members.length === 4) return members;
-  if (!addBots) throw new Error("NOT_ENOUGH_PLAYERS");
-  const bots = Array.from({ length: 4 - members.length }, (_, i) => `${BOT_PREFIX}${i + 1}`);
-  return [...members, ...bots];
+  return [...members, ...Array.from({ length: 4 - members.length }, () => "")];
 }
 
 function errorOf(err: unknown): string {
@@ -120,7 +118,10 @@ export class Table extends DurableObject<Env> {
         // Peserta diambil dari Discord, bukan dari klien. Hanya anggota instance yang boleh membuat meja.
         const members = await this.instanceMembers(msg.instanceId);
         if (!members.includes(userId)) return this.reject(ws, "NOT_SEATED");
-        room = createRoom(fillSeats(members, msg.addBots === true), ROOM_OPTIONS);
+        room = createRoom(seatsFrom(members), ROOM_OPTIONS);
+        for (const [i, id] of members.entries()) {
+          room.setProfile(i as PlayerId, await fetchProfile(id, this.env.DISCORD_BOT_TOKEN));
+        }
         await this.ctx.storage.put("instanceId", msg.instanceId);
       } else if (!seated) {
         const members = await this.instanceMembers(msg.instanceId);
@@ -140,6 +141,10 @@ export class Table extends DurableObject<Env> {
       if (claimed === null) return this.reject(ws, "NOT_SEATED");
       seat = claimed;
     }
+    // Profil diambil saat pertama kali duduk. Kalau belum ada (misal gagal sebelumnya), diambil ulang.
+    if (room!.profiles[seat] === null) {
+      room!.setProfile(seat, await fetchProfile(userId, this.env.DISCORD_BOT_TOKEN));
+    }
     ws.serializeAttachment({ userId, seat } satisfies Attachment);
     room!.connect(seat);
     await this.commit(room!);
@@ -151,7 +156,9 @@ export class Table extends DurableObject<Env> {
     // Reset membuat ruang baru dengan kursi yang sama (termasuk bot dan pemain yang sudah masuk).
     if (intent.type === "reset") {
       if (seat !== 0) return ws.send(JSON.stringify({ type: "error", error: "RESET_NOT_ALLOWED" }));
-      return this.commit(createRoom([...loaded.seats], ROOM_OPTIONS));
+      const next = createRoom([...loaded.seats], ROOM_OPTIONS);
+      next.setProfiles(loaded.profiles);
+      return this.commit(next);
     }
     const room = loaded;
     room.tick();

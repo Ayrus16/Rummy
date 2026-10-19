@@ -12,7 +12,7 @@ import {
 import type { Card } from "../../src/rules/cards";
 import { classify } from "../../src/rules/combos";
 import type { Intent } from "../../server/room";
-import type { PlayerView } from "../../server/view";
+import type { PlayerInfo, PlayerView } from "../../server/view";
 import styles from "./Table.module.css";
 
 interface TableProps {
@@ -27,6 +27,24 @@ const RANK_ORDER = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q",
 
 function bySuitThenRank(a: Card, b: Card): number {
   return SUIT_ORDER.indexOf(a.suit) - SUIT_ORDER.indexOf(b.suit) || RANK_ORDER.indexOf(a.rank) - RANK_ORDER.indexOf(b.rank);
+}
+
+const TARGET_PRESETS = [500, 1000, 1500, 2000];
+
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  return (
+    <div className={styles.modalBackdrop} onClick={onClose}>
+      <div className={styles.modal} role="dialog" aria-label={title} onClick={(event) => event.stopPropagation()}>
+        <div className={styles.modalHead}>
+          <strong>{title}</strong>
+          <button type="button" className={styles.tool} onClick={onClose}>
+            Tutup
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
 }
 
 function signed(value: number): string {
@@ -101,6 +119,20 @@ function FitRow({ count, children, hand = false }: { count: number; children: Re
   );
 }
 
+// Avatar pemain. Pemain tanpa foto memakai huruf awal, dan bot memakai avatar bot dari server.
+function Avatar({ info, size = 22 }: { info: PlayerInfo; size?: number }) {
+  if (info.avatarUrl === null) {
+    return (
+      <span className={styles.avatarFallback} style={{ width: size, height: size }}>
+        {info.name.charAt(0)}
+      </span>
+    );
+  }
+  // Avatar dari CDN Discord, jadi tidak pakai komponen gambar Next.
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img className={styles.avatar} src={info.avatarUrl} alt="" width={size} height={size} />;
+}
+
 function Melds({ melds }: { melds: Card[][] }) {
   return (
     <div className={styles.row}>
@@ -128,6 +160,7 @@ export function Table({ view, error, onIntent }: TableProps) {
   // Susunan kombinasi saat fase penyusunan. Null berarti belum diubah, jadi pakai usulan server.
   const [edit, setEdit] = useState<{ round: number; groups: string[][] } | null>(null);
   const [targetInput, setTargetInput] = useState("");
+  const [panel, setPanel] = useState<"result" | "history" | null>(null);
 
   const board = view.board;
   const myTurn = board !== null && board.turn === view.you;
@@ -137,6 +170,8 @@ export function Table({ view, error, onIntent }: TableProps) {
   // Pembukaan memakai status "opening", permainan memakai "playing". Keduanya boleh bertindak saat gilirannya.
   const playable = board !== null && (view.status === "opening" || view.status === "playing") && myTurn;
   const scoringPhase = view.status === "scoring" && view.scoring !== null;
+  const emptySeats = view.seats.filter((seat) => seat === "").length;
+  const nameOf = (seat: number) => view.players[seat]?.name ?? `P${seat + 1}`;
   const myConfirmed = scoringPhase && view.scoring!.confirmed[view.you];
   const jokerRank = board?.jokerRank ?? null;
 
@@ -251,10 +286,10 @@ export function Table({ view, error, onIntent }: TableProps) {
 
   // Kartu terpilih dari sampah bisa dijadikan kombinasi baru kalau sah.
   const selectedLeftover = leftoverCards.filter((card) => selected.includes(card.id));
-  const canGroup = scoringPhase && !myConfirmed && (board?.laidPureSeri[view.you] ?? false) && selectedLeftover.length >= 3 &&
+  const canGroup = scoringPhase && !myConfirmed && selectedLeftover.length >= 3 &&
     classify(selectedLeftover, jokerRank).kind !== "invalid";
   const waiting = scoringPhase
-    ? view.scoring!.confirmed.map((ok, seat) => (ok ? null : `P${seat + 1}`)).filter(Boolean).join(", ")
+    ? view.scoring!.confirmed.map((ok, seat) => (ok ? null : nameOf(seat))).filter(Boolean).join(", ")
     : "";
 
   return (
@@ -264,125 +299,97 @@ export function Table({ view, error, onIntent }: TableProps) {
         <div>Target {view.target} · Ronde {view.rounds}</div>
         <div className={styles.totals}>
           {view.seats.map((_, seat) => (
-            <span key={seat} className={seat === view.you ? styles.me : undefined}>
-              P{seat + 1}: {view.totals[seat]}
+            <span key={seat} className={styles.playerRow + (seat === view.you ? " " + styles.me : "")}>
+              <Avatar info={view.players[seat]} size={20} />
+              {nameOf(seat)}: {view.totals[seat]}
               {view.pausedSeat === seat ? " (terputus)" : ""}
             </span>
           ))}
         </div>
       </header>
 
+      {(view.roundDetail !== null || view.history.length > 0) && (
+        <div className={styles.toolbar}>
+          {view.roundDetail !== null && (
+            <button type="button" className={styles.tool} onClick={() => setPanel("result")}>
+              Hasil ronde
+            </button>
+          )}
+          {view.history.length > 0 && (
+            <button type="button" className={styles.tool} onClick={() => setPanel("history")}>
+              Riwayat poin
+            </button>
+          )}
+        </div>
+      )}
       {view.rounds === 0 && view.status !== "finished" && view.status !== "cancelled" && (
-        <form
-          className={styles.target}
-          onSubmit={(event) => {
-            event.preventDefault();
-            onIntent({ type: "set_target", target: Number(targetInput) });
-            setTargetInput("");
-          }}
-        >
-          <label>
-            Target poin{" "}
+        <section className={styles.targetCard}>
+          <div className={styles.label}>Target poin: {view.target}</div>
+          <div className={styles.presets}>
+            {TARGET_PRESETS.map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                className={preset === view.target ? styles.presetActive : styles.preset}
+                onClick={() => onIntent({ type: "set_target", target: preset })}
+              >
+                {preset}
+              </button>
+            ))}
+          </div>
+          <form
+            className={styles.target}
+            onSubmit={(event) => {
+              event.preventDefault();
+              onIntent({ type: "set_target", target: Number(targetInput) });
+              setTargetInput("");
+            }}
+          >
             <input
               type="number"
               min={100}
               max={5000}
               step={50}
               value={targetInput}
-              placeholder={String(view.target)}
+              placeholder="Lainnya"
+              aria-label="Target poin lainnya"
               onChange={(event) => setTargetInput(event.target.value)}
             />
-          </label>
-          <button type="submit" disabled={targetInput === ""}>
-            Atur target
-          </button>
-        </form>
+            <button type="submit" disabled={targetInput === ""}>
+              Atur
+            </button>
+          </form>
+        </section>
       )}
       {view.status === "paused" && <p className={styles.notice}>Permainan dijeda, menunggu pemain kembali.</p>}
       {view.status === "cancelled" && <p className={styles.notice}>Sesi dibatalkan karena pemain tidak kembali.</p>}
       {view.status === "finished" && (
-        <p className={styles.notice}>Pemenang: P{(view.winner ?? 0) + 1}</p>
+        <p className={styles.notice}>Pemenang: {nameOf(view.winner ?? 0)}</p>
       )}
       {scoringPhase && (
         <p className={styles.notice}>
           Ronde selesai. {myConfirmed ? `Menunggu konfirmasi dari ${waiting}.` : "Susun kombinasimu lalu konfirmasi."}
         </p>
       )}
+      {view.status === "waiting" && (
+        <section className={styles.targetCard}>
+          <div className={styles.label}>Menunggu pemain. Kursi kosong: {emptySeats}</div>
+          <button type="button" className={styles.stock} onClick={() => onIntent({ type: "add_bots" })}>
+            Tambah bot ({emptySeats})
+          </button>
+        </section>
+      )}
       {error && <p className={styles.error}>{error}</p>}
-
-      {view.roundDetail !== null && !scoringPhase && (
-        <section className={styles.detail}>
-          <div className={styles.label}>Hasil ronde terakhir</div>
-          <div className={styles.resultGrid}>
-            {view.roundDetail.map((detail, seat) => (
-              <div key={seat} className={styles.resultSeat}>
-                <div className={styles.resultHead}>
-                  <strong>P{seat + 1}</strong>
-                  <span className={detail.score < 0 ? styles.minus : styles.plus}>{signed(detail.score)}</span>
-                </div>
-                {detail.melds.length > 0 && <div className={styles.resultSubtitle}>Kombinasi</div>}
-                {detail.melds.map((meld, i) => (
-                  <div key={i} className={styles.resultLine}>
-                    <div className={styles.cards}>
-                      {meld.map((card) => (
-                        <CardFace key={card.id} card={card} disabled />
-                      ))}
-                    </div>
-                    <span className={detail.meldValues[i] < 0 ? styles.minus : styles.plus}>{signed(detail.meldValues[i])}</span>
-                  </div>
-                ))}
-                {detail.leftover.length > 0 && <div className={styles.resultSubtitle}>Sampah</div>}
-                {detail.leftover.length > 0 && (
-                  <div className={styles.cards}>
-                    {detail.leftover.map((card, i) => (
-                      <span key={card.id} className={styles.leftCard}>
-                        <CardFace card={card} disabled />
-                        <span className={styles.minus}>{signed(detail.leftoverValues[i])}</span>
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {detail.bonus !== 0 && <div className={styles.resultLine}>Bonus closed <span className={styles.plus}>{signed(detail.bonus)}</span></div>}
-                {detail.penalty !== 0 && <div className={styles.resultLine}>Penalti joker <span className={styles.minus}>{signed(detail.penalty)}</span></div>}
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {view.history.length > 0 && (
-        <section className={styles.detail}>
-          <div className={styles.label}>Riwayat poin (total setelah ronde)</div>
-          <table className={styles.history}>
-            <thead>
-              <tr>
-                <th>Ronde</th>
-                {view.seats.map((_, seat) => (
-                  <th key={seat}>P{seat + 1}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {view.history.map((entry) => (
-                <tr key={entry.round}>
-                  <td>{entry.round}</td>
-                  {entry.totals.map((total, seat) => (
-                    <td key={seat}>
-                      {total} <span className={entry.scores[seat] < 0 ? styles.minus : styles.plus}>({signed(entry.scores[seat])})</span>
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      )}
 
       <section className={styles.opponents}>
         {view.handCounts.map((count, seat) =>
           seat === view.you ? null : (
             <div key={seat} className={styles.opponent}>
-              P{seat + 1}: {count} kartu
+              <div className={styles.playerRow}>
+                <Avatar info={view.players[seat]} />
+                <strong>{nameOf(seat)}</strong>
+              </div>
+              {view.seats[seat] === "" ? "kosong" : `${count} kartu`}
               {board && board.table[seat].length > 0 && <Melds melds={board.table[seat]} />}
             </div>
           ),
@@ -463,9 +470,9 @@ export function Table({ view, error, onIntent }: TableProps) {
             Buang
           </button>
         )}
-        {!playable && view.status !== "finished" && view.status !== "cancelled" && view.status !== "scoring" && (
+        {!playable && view.status !== "finished" && view.status !== "cancelled" && view.status !== "scoring" && view.status !== "waiting" && (
           <span className={styles.label}>
-            Giliran P{(board?.turn ?? 0) + 1}
+            Giliran {nameOf(board?.turn ?? 0)}
           </span>
         )}
       </section>
@@ -480,9 +487,6 @@ export function Table({ view, error, onIntent }: TableProps) {
       {scoringPhase && !myConfirmed ? (
         <section className={styles.hand}>
           <div className={styles.label}>Kombinasimu (kartu yang tidak masuk kombinasi dihitung minus)</div>
-          {!(board?.laidPureSeri[view.you] ?? false) && (
-            <p className={styles.notice}>Kamu belum menurunkan seri murni, jadi semua kartumu dihitung minus.</p>
-          )}
           {groups.map((group, index) => (
             <div key={index} className={styles.row}>
               {group.map((id) => {
@@ -554,9 +558,86 @@ export function Table({ view, error, onIntent }: TableProps) {
 
       <section className={styles.actions}>
         <button type="button" className={styles.reset} onClick={resetClicked} disabled={view.you !== 0}>
-          {view.you !== 0 ? "Reset game (hanya P1)" : confirmReset ? "Klik lagi untuk reset game" : "Reset game"}
+          {view.you !== 0 ? "Reset game (hanya pemain pertama)" : confirmReset ? "Klik lagi untuk reset game" : "Reset game"}
         </button>
       </section>
+      {panel === "result" && view.roundDetail !== null && (
+        <Modal title="Hasil ronde terakhir" onClose={() => setPanel(null)}>
+                {(
+        <section className={styles.detail}>
+          <div className={styles.label}>Hasil ronde terakhir</div>
+          <div className={styles.resultGrid}>
+            {view.roundDetail.map((detail, seat) => (
+              <div key={seat} className={styles.resultSeat}>
+                <div className={styles.resultHead}>
+                  <span className={styles.playerRow}>
+                    <Avatar info={view.players[seat]} />
+                    <strong>{nameOf(seat)}</strong>
+                  </span>
+                  <span className={detail.score < 0 ? styles.minus : styles.plus}>{signed(detail.score)}</span>
+                </div>
+                {detail.melds.length > 0 && <div className={styles.resultSubtitle}>Kombinasi</div>}
+                {detail.melds.map((meld, i) => (
+                  <div key={i} className={styles.resultLine}>
+                    <div className={styles.cards}>
+                      {meld.map((card) => (
+                        <CardFace key={card.id} card={card} disabled />
+                      ))}
+                    </div>
+                    <span className={detail.meldValues[i] < 0 ? styles.minus : styles.plus}>{signed(detail.meldValues[i])}</span>
+                  </div>
+                ))}
+                {detail.leftover.length > 0 && <div className={styles.resultSubtitle}>Sampah</div>}
+                {detail.leftover.length > 0 && (
+                  <div className={styles.cards}>
+                    {detail.leftover.map((card, i) => (
+                      <span key={card.id} className={styles.leftCard}>
+                        <CardFace card={card} disabled />
+                        <span className={styles.minus}>{signed(detail.leftoverValues[i])}</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {detail.bonus !== 0 && <div className={styles.resultLine}>Bonus closed <span className={styles.plus}>{signed(detail.bonus)}</span></div>}
+                {detail.penalty !== 0 && <div className={styles.resultLine}>Penalti joker <span className={styles.minus}>{signed(detail.penalty)}</span></div>}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+        </Modal>
+      )}
+      {panel === "history" && view.history.length > 0 && (
+        <Modal title="Riwayat poin" onClose={() => setPanel(null)}>
+                {(
+        <section className={styles.detail}>
+          <div className={styles.label}>Riwayat poin (total setelah ronde)</div>
+          <table className={styles.history}>
+            <thead>
+              <tr>
+                <th>Ronde</th>
+                {view.seats.map((_, seat) => (
+                  <th key={seat}>{nameOf(seat)}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {view.history.map((entry) => (
+                <tr key={entry.round}>
+                  <td>{entry.round}</td>
+                  {entry.totals.map((total, seat) => (
+                    <td key={seat}>
+                      {total} <span className={entry.scores[seat] < 0 ? styles.minus : styles.plus}>({signed(entry.scores[seat])})</span>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+        </Modal>
+      )}
     </main>
   );
 }
