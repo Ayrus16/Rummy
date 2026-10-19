@@ -33,6 +33,12 @@ const MESSAGES: Record<string, string> = {
   INVALID_ARRANGEMENT: "Susunan kombinasi tidak sah. Periksa lagi kombinasinya.",
   ALREADY_CONFIRMED: "Kamu sudah konfirmasi susunan.",
 
+  // Cekih
+  CEKIH_SELF: "Kamu tidak bisa menyebut cekih ke dirimu sendiri.",
+  CEKIH_NOT_ALLOWED: "Belum bisa menyebut cekih. Tanganmu belum tinggal satu kartu lagi untuk tutup.",
+  CEKIH_NOT_FOUND: "Tidak ada cekih ke pemain itu yang bisa dibatalkan.",
+  CEKIH_ALREADY_ACTIVE: "Cekih ke pemain itu sudah aktif.",
+
   // Reset
   RESET_NOT_ALLOWED: "Hanya pemain pertama yang bisa mereset game.",
 

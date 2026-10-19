@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import type { Card } from "../../src/rules/cards";
+import { canCallCekih } from "../../src/rules/cekih";
 import { classify } from "../../src/rules/combos";
 import type { Intent } from "../../server/room";
 import type { PlayerInfo, PlayerView } from "../../server/view";
@@ -172,6 +173,9 @@ export function Table({ view, error, onIntent }: TableProps) {
   const scoringPhase = view.status === "scoring" && view.scoring !== null;
   const emptySeats = view.seats.filter((seat) => seat === "").length;
   const nameOf = (seat: number) => view.players[seat]?.name ?? `P${seat + 1}`;
+  // Cekih: tombol hanya aktif kalau tangan sudah tinggal satu kartu lagi untuk tutup.
+  const myCekih = board?.cekih.filter((c) => c.caller === view.you) ?? [];
+  const cekihReady = board !== null && view.status === "playing" && canCallCekih(view.hand, board.jokerRank);
   const myConfirmed = scoringPhase && view.scoring!.confirmed[view.you];
   const jokerRank = board?.jokerRank ?? null;
 
@@ -556,6 +560,39 @@ export function Table({ view, error, onIntent }: TableProps) {
         </section>
       )}
 
+      {board && board.cekih.length > 0 && (
+        <p className={styles.notice}>
+          Cekih aktif: {board.cekih.map((c) => `${nameOf(c.caller)} → ${nameOf(c.target)}`).join(", ")}
+        </p>
+      )}
+      {board?.cekih
+        .filter((c) => c.target === view.you)
+        .map((c) => (
+          <p key={`${c.caller}-${c.target}`} className={styles.notice}>
+            {nameOf(c.caller)} menyebut cekih ke kamu.
+          </p>
+        ))}
+      {view.status === "playing" && (
+        <section className={styles.actions}>
+          {view.players.map((info, seat) =>
+            seat === view.you || info.kind === "empty" || myCekih.some((c) => c.target === seat) ? null : (
+              <button
+                key={seat}
+                type="button"
+                disabled={!cekihReady}
+                onClick={() => onIntent({ type: "cekih", target: seat })}
+              >
+                Cekih {info.name}
+              </button>
+            ),
+          )}
+          {myCekih.map((c) => (
+            <button key={c.target} type="button" onClick={() => onIntent({ type: "cekih_batal", target: c.target })}>
+              Batalkan cekih ke {nameOf(c.target)}
+            </button>
+          ))}
+        </section>
+      )}
       <section className={styles.actions}>
         <button type="button" className={styles.reset} onClick={resetClicked} disabled={view.you !== 0}>
           {view.you !== 0 ? "Reset game (hanya pemain pertama)" : confirmReset ? "Klik lagi untuk reset game" : "Reset game"}
