@@ -108,18 +108,20 @@ test("closed from stock gives +250", () => {
     stock: [c("2D")],
   });
   const out = discardCard(s, 0, c("KC"));
-  expect(out.result).toEqual({ closedBy: 0, bonus: 250, closingCard: c("KC") });
+  expect(out.result).toEqual({ closedBy: 0, bonus: 250, closingCard: c("KC"), cekihTarget: null, cekihPenalty: 0 });
 });
 
-test("closed from discard gives 10x the closing card", () => {
+// Bonus tutup biasa sekarang hanya lewat cekih (lihat cekih-closing.test.ts). Tanpa cekih, bonus 0.
+test("closed after a discard pickup without cekih gives no bonus", () => {
   const s = round({
     hands: [[c("3H"), c("4H"), c("5H"), c("8S"), c("8H"), c("8D"), c("8C"), c("KC")], [], [], []],
     phase: "discard",
     drewFrom: "discard",
     stock: [c("2D")],
+    pickedFromDiscard: [true, false, false, false],
   });
   const out = discardCard(s, 0, c("KC"));
-  expect(out.result?.bonus).toBe(100);
+  expect(out.result?.bonus).toBe(0);
 });
 
 test("discard that empties the stock ends the round with no bonus", () => {
@@ -130,7 +132,7 @@ test("discard that empties the stock ends the round with no bonus", () => {
     stock: [],
   });
   const out = discardCard(s, 0, c("6H"));
-  expect(out.result).toEqual({ closedBy: "stock_empty", bonus: 0, closingCard: null });
+  expect(out.result).toEqual({ closedBy: "stock_empty", bonus: 0, closingCard: null, cekihTarget: null, cekihPenalty: 0 });
 });
 
 test("two aces in hand can take an ace from discard as a pure tris", () => {

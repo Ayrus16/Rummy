@@ -51,7 +51,7 @@ test("leftover joker in hand is minus 10x", () => {
 });
 
 test("closed bonus is added to the closer only", () => {
-  const s = round({ result: { closedBy: 2, bonus: 250, closingCard: c("KC") } });
+  const s = round({ result: { closedBy: 2, bonus: 250, closingCard: c("KC"), cekihTarget: null, cekihPenalty: 0 } });
   expect(scoreRound(s)).toEqual([0, 0, 250, 0]);
 });
 
