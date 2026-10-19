@@ -1,7 +1,7 @@
 import { baseValue, type Card, type Rank } from "./cards";
 import { classify } from "./combos";
 import { pickableFromDiscard } from "./discard";
-import { subsets } from "./subsets";
+import { canPartition, removeCards } from "./partition";
 import type { DiscardPile, PlayerId } from "./opening";
 
 export interface RoundResult {
@@ -143,24 +143,5 @@ function withHand(state: RoundState, player: PlayerId, hand: Card[]): Card[][] {
   return state.hands.map((h, seat) => (seat === player ? hand : h));
 }
 
-function removeCards(hand: Card[], cards: Card[]): Card[] {
-  const out = [...hand];
-  for (const card of cards) {
-    const index = out.findIndex((held) => held.id === card.id);
-    if (index === -1) throw new Error("CARD_NOT_IN_HAND");
-    out.splice(index, 1);
-  }
-  return out;
-}
 
 // Apakah kartu ini bisa dibagi menjadi kombinasi sah (3–4 kartu) semuanya.
-function canPartition(cards: Card[], jokerRank: Rank | null): boolean {
-  if (cards.length === 0) return true;
-  const [first, ...rest] = cards;
-  for (const group of subsets(rest, 2, 3)) {
-    const meld = [first, ...group];
-    if (classify(meld, jokerRank).kind === "invalid") continue;
-    if (canPartition(removeCards(rest, group), jokerRank)) return true;
-  }
-  return false;
-}
