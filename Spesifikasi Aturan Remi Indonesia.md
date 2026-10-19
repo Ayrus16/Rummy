@@ -130,7 +130,7 @@ Ronde berakhir dengan salah satu dari dua cara: ada pemain yang closed, atau can
 4. Joker yang tersisa di tangan dan tidak jadi kombinasi dihitung **minus 10×** nilai kartunya.
 5. Tambahkan bonus closed (jika ada) dan kurangi penalti buang joker selama ronde.
 
-Kombinasi di tangan yang memakai joker hanya dihitung plus jika pemain sudah pernah menurunkan seri murni di ronde ini. Kalau belum, semua kartu dalam kombinasi joker itu dihitung minus. Kombinasi tanpa joker selalu dihitung plus. Seri murni tidak wajib diturunkan.
+Kombinasi di tangan yang memakai joker hanya dihitung plus jika pemain punya seri murni, baik yang sudah diturunkan di ronde ini maupun yang ada di tangannya. Kalau belum, semua kartu dalam kombinasi joker itu dihitung minus. Kombinasi tanpa joker selalu dihitung plus. Seri murni tidak wajib diturunkan.
 
 Skor ronde boleh bernilai minus.
 

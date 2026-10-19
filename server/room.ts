@@ -11,6 +11,7 @@ import {
   type PlayerId,
 } from "../src/rules/opening";
 import {
+  canUseJokerMelds,
   containsJoker,
   handArrangement,
   loneValue,
@@ -395,7 +396,7 @@ export class Room {
     const round = this.round!;
     this.status = "scoring";
     this.scoringArrangement = round.hands.map((hand, seat) =>
-      handArrangement(hand, round.jokerRank, round.laidPureSeri[seat]),
+      handArrangement(hand, round.jokerRank, canUseJokerMelds(hand, round.laidPureSeri[seat], round.jokerRank)),
     );
     this.scoringConfirmed = [false, false, false, false];
     this.seats.forEach((seatId, seat) => {
@@ -415,7 +416,10 @@ export class Room {
     if (this.scoringConfirmed[seat]) throw new Error("ALREADY_CONFIRMED");
     const hand = this.round!.hands[seat];
     const melds = intent.melds.map((ids) => ids.map((id) => findCard(hand, id)));
-    if (!this.round!.laidPureSeri[seat] && melds.some((meld) => containsJoker(meld, this.round!.jokerRank))) {
+    if (
+      !canUseJokerMelds(hand, this.round!.laidPureSeri[seat], this.round!.jokerRank) &&
+      melds.some((meld) => containsJoker(meld, this.round!.jokerRank))
+    ) {
       throw new Error("JOKER_MELD_NEEDS_PURE_SERI");
     }
     const arrangement = validateArrangement(hand, melds, this.round!.jokerRank);

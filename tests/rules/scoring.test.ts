@@ -107,3 +107,10 @@ test("non-joker meld in hand counts plus without a pure seri", () => {
   const s = round({ jokerRank: "9", hands: [hand, [], [], []], laidPureSeri: [false, false, false, false] });
   expect(scoreRound(s)[0]).toBe(15);
 });
+
+test("joker meld counts plus when the hand holds a pure seri, without laying it down", () => {
+  // Joker = 5. Tangan punya seri murni 2S 3S 4S (15) dan kombinasi joker 3H 4H 5C (15). Keduanya plus.
+  const hand = ["2S", "3S", "4S", "3H", "4H", "5C"].map(c);
+  const s = round({ jokerRank: "5", hands: [hand, [], [], []], laidPureSeri: [false, false, false, false] });
+  expect(scoreRound(s)[0]).toBe(30);
+});

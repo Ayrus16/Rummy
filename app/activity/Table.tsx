@@ -162,6 +162,12 @@ export function Table({ view, error, onIntent }: TableProps) {
   const [edit, setEdit] = useState<{ round: number; groups: string[][] } | null>(null);
   const [targetInput, setTargetInput] = useState("");
   const [panel, setPanel] = useState<"result" | "history" | null>(null);
+  // Modal hasil ronde terbuka otomatis saat ronde baru selesai (jumlah ronde bertambah).
+  const [seenRounds, setSeenRounds] = useState(view.rounds);
+  if (view.rounds !== seenRounds) {
+    setSeenRounds(view.rounds);
+    if (view.roundDetail !== null) setPanel("result");
+  }
 
   const board = view.board;
   const myTurn = board !== null && board.turn === view.you;
@@ -513,7 +519,7 @@ export function Table({ view, error, onIntent }: TableProps) {
               />
             ))}
           </FitRow>
-          <div className={styles.row}>
+          <div className={styles.groupActions}>
             <button
               type="button"
               disabled={!canGroup}

@@ -46,7 +46,7 @@ export function seatScore(state: RoundState, seat: number, arrangement: Arrangem
 
 export function scoreRound(state: RoundState): number[] {
   return state.hands.map((hand, seat) =>
-    seatScore(state, seat, handArrangement(hand, state.jokerRank, state.laidPureSeri[seat])),
+    seatScore(state, seat, handArrangement(hand, state.jokerRank, canUseJokerMelds(hand, state.laidPureSeri[seat], state.jokerRank))),
   );
 }
 
@@ -84,4 +84,17 @@ function bestFrom(hand: Card[], jokerRank: Rank | null, allowJokerMelds: boolean
 
 export function containsJoker(meld: Card[], jokerRank: Rank | null): boolean {
   return jokerRank !== null && meld.some((card) => card.rank === jokerRank);
+}
+
+// Kombinasi yang memakai joker dihitung plus kalau pemain sudah menurunkan seri murni, atau punya seri murni di tangan.
+export function canUseJokerMelds(hand: Card[], laidPureSeri: boolean, jokerRank: Rank | null): boolean {
+  return laidPureSeri || hasPureSeri(hand, jokerRank);
+}
+
+// Seri murni (tanpa joker, termasuk tris As) di antara kartu tangan.
+export function hasPureSeri(hand: Card[], jokerRank: Rank | null): boolean {
+  return subsets(hand, 3, 4).some((group) => {
+    const check = classify(group, jokerRank);
+    return check.kind !== "invalid" && check.pure;
+  });
 }
