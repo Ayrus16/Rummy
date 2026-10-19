@@ -71,3 +71,10 @@ test("hand with a joker one 9 short can call cekih by discarding its own leftove
   const hand = ["2H", "3H", "4H", "9S", "9C", "8D", "KS"].map(c);
   expect(canCallCekih(hand, "8")).toBe(true);
 });
+
+test("cekih can target the player right after the caller", () => {
+  // A (0) bisa cekih ke B (1), pemain tepat setelahnya. B (1) juga bisa cekih ke C (2).
+  const start = round({ hands: [READY, READY, [], []] });
+  expect(callCekih(start, 0, 1).cekih).toEqual([{ caller: 0, target: 1 }]);
+  expect(callCekih(start, 1, 2).cekih).toEqual([{ caller: 1, target: 2 }]);
+});

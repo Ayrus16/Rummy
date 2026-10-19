@@ -123,7 +123,8 @@ test("tutup tangan: the closer gets 250 and everyone else gets 0, no card scorin
     pickedFromDiscard: [false, false, false, false],
     penalties: [0, -50, 0, 0],
   });
-  expect(scoreRound(s)).toEqual([250, 0, 0, 0]);
+  // Penalti joker yang dibuang tetap berlaku walaupun ada yang tutup tangan.
+  expect(scoreRound(s)).toEqual([250, -50, 0, 0]);
 });
 
 test("the arrangement prefers a pure seri over a joker seri when the joker count ties", () => {
@@ -132,4 +133,11 @@ test("the arrangement prefers a pure seri over a joker seri when the joker count
   const hand = ["6D", "6H", "4D", "4S", "7C", "8C", "9C"].map(c);
   const arr = handArrangement(hand, "6", true);
   expect(arr.melds.some((meld) => meld.map((card) => card.id).sort().join(",") === "7C,8C,9C")).toBe(true);
+});
+
+test("tie in score: the arrangement prefers the pure seri 2C 3C 4C 5C over a joker seri", () => {
+  // Joker = K. 3S 3H 3C 2C 4C 5C KD(joker). 3S 3H K + 2C 3C 4C 5C sama-sama bernilai 35, tetapi seri murni dipilih.
+  const hand = ["3S", "3H", "3C", "2C", "4C", "5C", "KD"].map(c);
+  const arr = handArrangement(hand, "K", true);
+  expect(arr.melds.some((meld) => meld.map((card) => card.id).sort().join(",") === "2C,3C,4C,5C")).toBe(true);
 });

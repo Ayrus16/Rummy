@@ -13,6 +13,9 @@ export interface Arrangement {
 
 interface Best extends Arrangement {
   score: number;
+  // Jumlah seri murni dan jumlah kartu joker yang dipakai di kombinasi. Dipakai untuk memecah nilai yang sama.
+  pure: number;
+  jokers: number;
 }
 
 // Susunan tangan dengan nilai terbaik. Dipakai sebagai usulan awal dan untuk bot.
@@ -52,11 +55,12 @@ export function scoreRound(state: RoundState): number[] {
 }
 
 // Skor akhir ronde. Tutup tangan (tidak pernah mengambil dari buangan): penutup dapat bonus, yang lain 0,
-// dan kartu tidak dihitung sama sekali.
+// dan kartu tidak dihitung. Penalti joker tetap berlaku.
 export function finalScores(state: RoundState, arrangements: Arrangement[]): number[] {
   const closer = state.result?.closedBy;
   if (typeof closer === "number" && !state.pickedFromDiscard[closer]) {
-    return state.hands.map((_, seat) => (seat === closer ? state.result!.bonus : 0));
+    // Penalti joker yang dibuang tetap berlaku.
+    return state.hands.map((_, seat) => (seat === closer ? state.result!.bonus : 0) + state.penalties[seat]);
   }
   return arrangements.map((arrangement, seat) => seatScore(state, seat, arrangement));
 }
@@ -73,24 +77,40 @@ export function loneValue(card: Card, jokerRank: Rank | null): number {
 // Setiap kartu dipilih untuk masuk kombinasi (plus) atau jadi sampah (minus). Dicari dengan rekursi,
 // tangan maksimal 8 kartu. Jika nilai sama, kartu dibiarkan sebagai sampah.
 function bestFrom(hand: Card[], jokerRank: Rank | null, allowJokerMelds: boolean): Best {
-  if (hand.length === 0) return { score: 0, melds: [], leftover: [] };
+  if (hand.length === 0) return { score: 0, melds: [], leftover: [], pure: 0, jokers: 0 };
   const [first, ...rest] = hand;
   const alone = bestFrom(rest, jokerRank, allowJokerMelds);
   let best: Best = {
     score: loneValue(first, jokerRank) + alone.score,
     melds: alone.melds,
     leftover: [first, ...alone.leftover],
+    pure: alone.pure,
+    jokers: alone.jokers,
   };
   for (const group of subsets(rest, 2, 3)) {
     const meld = [first, ...group];
-    if (classify(meld, jokerRank).kind === "invalid") continue;
+    const check = classify(meld, jokerRank);
+    if (check.kind === "invalid") continue;
     if (!allowJokerMelds && containsJoker(meld, jokerRank)) continue;
     const remaining = rest.filter((card) => !group.includes(card));
     const inner = bestFrom(remaining, jokerRank, allowJokerMelds);
-    const score = meldValue(meld, jokerRank) + inner.score;
-    if (score > best.score) best = { score, melds: [meld, ...inner.melds], leftover: inner.leftover };
+    const candidate: Best = {
+      score: meldValue(meld, jokerRank) + inner.score,
+      melds: [meld, ...inner.melds],
+      leftover: inner.leftover,
+      pure: inner.pure + (check.pure ? 1 : 0),
+      jokers: inner.jokers + meld.filter((card) => jokerRank !== null && card.rank === jokerRank).length,
+    };
+    if (isBetter(candidate, best)) best = candidate;
   }
   return best;
+}
+
+// Nilai lebih tinggi menang. Nilai sama: seri murni lebih banyak menang, lalu joker lebih sedikit.
+function isBetter(a: Best, b: Best): boolean {
+  if (a.score !== b.score) return a.score > b.score;
+  if (a.pure !== b.pure) return a.pure > b.pure;
+  return a.jokers < b.jokers;
 }
 
 export function containsJoker(meld: Card[], jokerRank: Rank | null): boolean {
