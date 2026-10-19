@@ -65,3 +65,9 @@ test("cancelling removes the cekih so it can be called again", () => {
 test("cancelling a cekih that does not exist is refused", () => {
   expect(() => cancelCekih(round(), 0, 2)).toThrow("CEKIH_NOT_FOUND");
 });
+
+test("hand with a joker one 9 short can call cekih by discarding its own leftover card", () => {
+  // Joker = 8. 2H 3H 4H, 9S 9C 8(joker, jadi 9), KS. Ambil satu 9, lalu buang KS.
+  const hand = ["2H", "3H", "4H", "9S", "9C", "8D", "KS"].map(c);
+  expect(canCallCekih(hand, "8")).toBe(true);
+});

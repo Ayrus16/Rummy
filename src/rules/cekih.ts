@@ -3,11 +3,18 @@ import { canPartition } from "./partition";
 import type { PlayerId } from "./opening";
 import type { RoundState } from "./turn";
 
-// Tangan tinggal satu kartu lagi jika ada kartu X (tidak ada di tangan) sehingga tangan setelah ditambah X
-// bisa dibentuk seluruhnya menjadi kombinasi sah. Kartu penutup diambil dari buangan saat penutupan.
+// Tangan tinggal satu kartu lagi untuk tutup jika ada kartu X (tidak ada di tangan) sehingga setelah
+// mengambilnya tangan bisa ditutup. Dua cara tutup:
+// - kartu penutup adalah kartu buangan yang ikut diambil: tangan + X sudah bisa dipartisi seluruhnya;
+// - kartu penutup adalah kartu sendiri: satu kartu c dibuang dari tangan + X, sisanya bisa dipartisi.
 export function canCallCekih(hand: Card[], jokerRank: Rank | null): boolean {
   const held = new Set(hand.map((card) => card.id));
-  return makeDeck().some((extra) => !held.has(extra.id) && canPartition([...hand, extra], jokerRank));
+  return makeDeck().some((extra) => {
+    if (held.has(extra.id)) return false;
+    const pool = [...hand, extra];
+    if (canPartition(pool, jokerRank)) return true;
+    return pool.some((_, i) => canPartition(pool.filter((__, j) => j !== i), jokerRank));
+  });
 }
 
 export function callCekih(state: RoundState, caller: PlayerId, target: PlayerId): RoundState {
