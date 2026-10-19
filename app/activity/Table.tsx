@@ -393,7 +393,7 @@ export function Table({ view, error, onIntent }: TableProps) {
                 <Avatar info={view.players[seat]} />
                 <strong>{nameOf(seat)}</strong>
               </div>
-              {view.seats[seat] === "" ? "kosong" : `${count} kartu`}
+              <span className={styles.opponentCount}>{view.seats[seat] === "" ? "kosong" : `${count} kartu`}</span>
               {board && board.table[seat].length > 0 && <Melds melds={board.table[seat]} />}
             </div>
           ),
@@ -579,6 +579,7 @@ export function Table({ view, error, onIntent }: TableProps) {
               <button
                 key={seat}
                 type="button"
+                className={styles.cekih}
                 disabled={!cekihReady}
                 onClick={() => onIntent({ type: "cekih", target: seat })}
               >
@@ -587,7 +588,12 @@ export function Table({ view, error, onIntent }: TableProps) {
             ),
           )}
           {myCekih.map((c) => (
-            <button key={c.target} type="button" onClick={() => onIntent({ type: "cekih_batal", target: c.target })}>
+            <button
+              key={c.target}
+              type="button"
+              className={styles.danger}
+              onClick={() => onIntent({ type: "cekih_batal", target: c.target })}
+            >
               Batalkan cekih ke {nameOf(c.target)}
             </button>
           ))}

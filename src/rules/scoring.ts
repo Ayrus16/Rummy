@@ -16,8 +16,9 @@ interface Best extends Arrangement {
 }
 
 // Susunan tangan dengan nilai terbaik. Dipakai sebagai usulan awal dan untuk bot.
-export function handArrangement(hand: Card[], jokerRank: Rank | null): Arrangement {
-  const best = bestFrom(hand, jokerRank);
+// allowJokerMelds: kombinasi yang memakai joker hanya boleh plus kalau pemain sudah pernah menurunkan seri murni.
+export function handArrangement(hand: Card[], jokerRank: Rank | null, allowJokerMelds: boolean): Arrangement {
+  const best = bestFrom(hand, jokerRank, allowJokerMelds);
   return { melds: best.melds, leftover: best.leftover };
 }
 
@@ -44,7 +45,9 @@ export function seatScore(state: RoundState, seat: number, arrangement: Arrangem
 }
 
 export function scoreRound(state: RoundState): number[] {
-  return state.hands.map((hand, seat) => seatScore(state, seat, handArrangement(hand, state.jokerRank)));
+  return state.hands.map((hand, seat) =>
+    seatScore(state, seat, handArrangement(hand, state.jokerRank, state.laidPureSeri[seat])),
+  );
 }
 
 export function meldValue(meld: Card[], jokerRank: Rank | null): number {
@@ -58,10 +61,10 @@ export function loneValue(card: Card, jokerRank: Rank | null): number {
 
 // Setiap kartu dipilih untuk masuk kombinasi (plus) atau jadi sampah (minus). Dicari dengan rekursi,
 // tangan maksimal 8 kartu. Jika nilai sama, kartu dibiarkan sebagai sampah.
-function bestFrom(hand: Card[], jokerRank: Rank | null): Best {
+function bestFrom(hand: Card[], jokerRank: Rank | null, allowJokerMelds: boolean): Best {
   if (hand.length === 0) return { score: 0, melds: [], leftover: [] };
   const [first, ...rest] = hand;
-  const alone = bestFrom(rest, jokerRank);
+  const alone = bestFrom(rest, jokerRank, allowJokerMelds);
   let best: Best = {
     score: loneValue(first, jokerRank) + alone.score,
     melds: alone.melds,
@@ -70,10 +73,15 @@ function bestFrom(hand: Card[], jokerRank: Rank | null): Best {
   for (const group of subsets(rest, 2, 3)) {
     const meld = [first, ...group];
     if (classify(meld, jokerRank).kind === "invalid") continue;
+    if (!allowJokerMelds && containsJoker(meld, jokerRank)) continue;
     const remaining = rest.filter((card) => !group.includes(card));
-    const inner = bestFrom(remaining, jokerRank);
+    const inner = bestFrom(remaining, jokerRank, allowJokerMelds);
     const score = meldValue(meld, jokerRank) + inner.score;
     if (score > best.score) best = { score, melds: [meld, ...inner.melds], leftover: inner.leftover };
   }
   return best;
+}
+
+export function containsJoker(meld: Card[], jokerRank: Rank | null): boolean {
+  return jokerRank !== null && meld.some((card) => card.rank === jokerRank);
 }

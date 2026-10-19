@@ -31,6 +31,7 @@ const MESSAGES: Record<string, string> = {
 
   // Penyusunan dan skor
   INVALID_ARRANGEMENT: "Susunan kombinasi tidak sah. Periksa lagi kombinasinya.",
+  JOKER_MELD_NEEDS_PURE_SERI: "Kombinasi yang memakai joker baru dihitung plus setelah kamu menurunkan seri murni.",
   ALREADY_CONFIRMED: "Kamu sudah konfirmasi susunan.",
 
   // Cekih

@@ -41,7 +41,8 @@ test("non-combo cards subtract base value", () => {
 
 test("joker in combo counts as the card it replaces", () => {
   // Seri 4H 5H + joker (berdiri untuk 6): 5 + 5 + 5 = 15.
-  const s = round({ hands: [[c("4H"), c("5H"), c("6D")], [], [], []], jokerRank: "6" });
+  // Kombinasi joker plus hanya setelah seri murni diturunkan (laidPureSeri).
+  const s = round({ hands: [[c("4H"), c("5H"), c("6D")], [], [], []], jokerRank: "6", laidPureSeri: [true, false, false, false] });
   expect(scoreRound(s)[0]).toBe(15);
 });
 
@@ -84,6 +85,25 @@ test("seatScore with the automatic arrangement matches scoreRound", () => {
     hands: [[c("2H"), c("3H"), c("4H"), c("9S")], [], [], []],
     table: [[[c("7C"), c("7D"), c("7S")]], [], [], []],
   });
-  const auto = handArrangement(s.hands[0], s.jokerRank);
+  const auto = handArrangement(s.hands[0], s.jokerRank, s.laidPureSeri[0]);
   expect(seatScore(s, 0, auto)).toBe(scoreRound(s)[0]);
+});
+
+test("joker meld in hand counts minus without a pure seri laid this round", () => {
+  // Joker = 5. 3H 4H 5C (5C joker) adalah seri 3-4-5 dengan joker. Tanpa seri murni, semuanya minus.
+  const hand = ["3H", "4H", "5C"].map(c);
+  const without = round({ jokerRank: "5", hands: [hand, [], [], []], laidPureSeri: [false, false, false, false] });
+  expect(scoreRound(without)[0]).toBe(-5 - 5 - 50);
+});
+
+test("joker meld in hand counts plus once a pure seri is laid this round", () => {
+  const hand = ["3H", "4H", "5C"].map(c);
+  const withPure = round({ jokerRank: "5", hands: [hand, [], [], []], laidPureSeri: [true, false, false, false] });
+  expect(scoreRound(withPure)[0]).toBe(15);
+});
+
+test("non-joker meld in hand counts plus without a pure seri", () => {
+  const hand = ["3H", "4H", "5H"].map(c);
+  const s = round({ jokerRank: "9", hands: [hand, [], [], []], laidPureSeri: [false, false, false, false] });
+  expect(scoreRound(s)[0]).toBe(15);
 });
