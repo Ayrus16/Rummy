@@ -1,0 +1,31 @@
+.main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 20px 80px;
+  line-height: 1.6;
+}
+
+.main h1 {
+  font-size: 28px;
+  margin-bottom: 8px;
+}
+
+.main h2 {
+  font-size: 18px;
+  margin-top: 28px;
+  margin-bottom: 8px;
+}
+
+.main p,
+.main ul {
+  margin-bottom: 12px;
+}
+
+.main ul {
+  padding-left: 20px;
+}
+
+.updated {
+  color: #666;
+  font-size: 14px;
+}
