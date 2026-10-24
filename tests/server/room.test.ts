@@ -381,3 +381,23 @@ test("view exposes active cekih on the board", () => {
   playOpening(room);
   expect(viewFor(room, 0).board!.cekih).toEqual([]);
 });
+
+test("a spectator view carries no hand cards of anyone", () => {
+  const room = newRoom();
+  const view = viewFor(room, null);
+  expect(view.you).toBeNull();
+  expect(view.hand).toEqual([]);
+  expect(view.handCounts).toEqual([7, 7, 7, 7]);
+  const json = JSON.stringify(view);
+  expect(room.board()!.hands.flat().some((card) => json.includes(`"${card.id}"`))).toBe(false);
+});
+
+test("view tells who may sit and who may reset", () => {
+  const room = newRoom();
+  expect(viewFor(room, 0).canReset).toBe(true);
+  expect(viewFor(room, 1).canReset).toBe(false);
+  expect(viewFor(room, null).canReset).toBe(false);
+  expect(viewFor(room, null).canSit).toBe(false);
+  room.leave(2);
+  expect(viewFor(room, null).canSit).toBe(true);
+});
