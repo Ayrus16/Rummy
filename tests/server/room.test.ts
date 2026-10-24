@@ -22,6 +22,15 @@ function botRoom(): Room {
   });
 }
 
+function mixedRoom(): Room {
+  return createRoom(["u0", "u1", "bot:3", "bot:4"], {
+    target: 1000,
+    disconnectTimeoutMs: TIMEOUT_MS,
+    rng: () => 0,
+    botDelayMs: 10,
+  });
+}
+
 function waitingRoom(): Room {
   return createRoom(["u0", "", "", ""], {
     target: 1000,
@@ -103,12 +112,63 @@ test("reconnecting within timeout resumes the round", () => {
   expect(() => room.handle(0, { type: "opening_draw" })).not.toThrow();
 });
 
-test("timeout cancels the session", () => {
+test("timeout hands the disconnected seat to a bot and play continues", () => {
   const room = newRoom();
   room.disconnect(1);
   advance(room, TIMEOUT_MS + 100);
-  expect(room.status).toBe("cancelled");
-  expect(() => room.handle(0, { type: "opening_draw" })).toThrow("ROOM_CLOSED");
+  expect(room.status).toBe("opening");
+  expect(room.pausedSeat).toBeNull();
+  expect(room.seats[1]).toBe("bot:2");
+});
+
+test("a bot that just took over waits 10 seconds before its first move", () => {
+  const room = mixedRoom();
+  room.leave(0);
+  advance(room, 9_000);
+  expect(room.board()!.discard.cards.length).toBe(0);
+  advance(room, 1_100);
+  expect(room.board()!.discard.cards.length).toBeGreaterThan(0);
+});
+
+test("a spectator who sits during the handover delay keeps the bot from moving", () => {
+  const room = mixedRoom();
+  room.leave(0);
+  advance(room, 5_000);
+  expect(room.sit("u9")).toBe(0);
+  advance(room, 10_000);
+  expect(room.board()!.hands[0].length).toBe(7);
+  expect(room.board()!.discard.cards.length).toBe(0);
+});
+
+test("sitting in a bot seat whose move is already scheduled stops that move", () => {
+  // Pembukaan: u0 selesai, giliran bot:2 dijadwalkan 10 ms lagi. Penonton duduk sebelum itu.
+  const room = botRoom();
+  room.handle(0, { type: "opening_draw" });
+  room.handle(0, { type: "opening_discard", cardId: viewFor(room, 0).hand[0].id });
+  expect(room.sit("u9")).toBe(1);
+  advance(room, 200);
+  expect(room.board()!.discard.cards.length).toBe(1);
+  expect(room.board()!.turn).toBe(1);
+});
+
+test("a table with no human seats does not run bots", () => {
+  const room = mixedRoom();
+  room.leave(0);
+  room.leave(1);
+  expect(room.nextDeadline()).toBeNull();
+  // Penonton duduk di kursi 1 (giliran pembukaan), lalu menyelesaikan gilirannya: bot kursi 2 dijadwalkan lagi.
+  expect(room.sit("u9")).toBe(0);
+  room.handle(0, { type: "opening_draw" });
+  room.handle(0, { type: "opening_discard", cardId: viewFor(room, 0).hand[0].id });
+  expect(room.nextDeadline()).not.toBeNull();
+});
+
+test("an old snapshot without handoverUntil restores and leave still works", () => {
+  const snapshot = JSON.parse(JSON.stringify(newRoom().snapshot()));
+  delete snapshot.handoverUntil;
+  const room = Room.restore(snapshot, { target: 1000, disconnectTimeoutMs: TIMEOUT_MS, rng: () => 0 });
+  room.leave(3);
+  expect(room.seats[3]).toBe("bot:4");
 });
 
 test("nextDeadline points at the pause timeout while paused", () => {
@@ -159,6 +219,7 @@ test("an all-bot room keeps playing rounds without stalling", () => {
     disconnectTimeoutMs: TIMEOUT_MS,
     rng: () => 0.5,
     botDelayMs: 1,
+    runAllBotTables: true,
   });
   for (let step = 0; step < 20_000 && room.session.rounds < 5; step++) {
     vi.advanceTimersByTime(1);
@@ -201,6 +262,7 @@ test("target locks after a round and each round is recorded in history", () => {
     disconnectTimeoutMs: TIMEOUT_MS,
     rng: () => 0.5,
     botDelayMs: 1,
+    runAllBotTables: true,
   });
   for (let step = 0; step < 5_000 && room.session.rounds === 0; step++) {
     vi.advanceTimersByTime(1);

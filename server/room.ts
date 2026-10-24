@@ -102,6 +102,8 @@ export interface RoomOptions {
   rng?: () => number;
   now?: () => number;
   botDelayMs?: number;
+  // Hanya untuk tes: meja yang semua kursinya bot tetap jalan. Di produksi bot berhenti kalau tidak ada manusia.
+  runAllBotTables?: boolean;
 }
 
 // Seluruh state ruang dalam bentuk JSON. Disimpan di antara request karena serverless tidak menyimpan memori.
@@ -122,6 +124,8 @@ export interface RoomSnapshot {
   opening: OpeningState | null;
   round: RoundState | null;
   botDueAt: number | null;
+  // Opsional: snapshot lama belum punya field ini.
+  handoverUntil?: (number | null)[];
 }
 
 // Papan ronde yang sedang berjalan, atau fase pembukaan (jika ronde belum mulai main).
@@ -197,6 +201,7 @@ export class Room {
     room.scoringConfirmed = snapshot.scoringConfirmed;
     room.history = snapshot.history;
     room.profiles = snapshot.profiles ?? [null, null, null, null];
+    room.handoverUntil = snapshot.handoverUntil ?? [null, null, null, null];
     return room;
   }
 
@@ -218,6 +223,7 @@ export class Room {
       scoringConfirmed: [...this.scoringConfirmed],
       history: this.history,
       profiles: [...this.profiles],
+      handoverUntil: [...this.handoverUntil],
     };
   }
 
@@ -228,12 +234,12 @@ export class Room {
     return candidates.length === 0 ? null : Math.min(...candidates);
   }
 
-  // Dipanggil saat waktunya tiba: batalkan sesi yang terjeda terlalu lama, dan jalankan bot yang sudah jatuh tempo.
+  // Dipanggil saat waktunya tiba: kursi yang terjeda terlalu lama diambil alih bot, lalu bot yang jatuh tempo dijalankan.
   tick(): void {
     const now = this.now();
     if (this.status === "paused" && this.pausedAt !== null && now - this.pausedAt >= this.options.disconnectTimeoutMs) {
-      this.cancel();
-      return;
+      this.toBot(this.pausedSeat!);
+      this.resume();
     }
     for (let i = 0; i < MAX_BOT_STEPS_PER_TICK && this.botDueAt !== null && this.botDueAt <= now; i++) {
       this.botDueAt = null;
@@ -316,11 +322,6 @@ export class Room {
     this.pausedSeat = null;
     this.pausedAt = null;
     this.scheduleBot();
-  }
-
-  private cancel(): void {
-    this.status = "cancelled";
-    this.botDueAt = null;
   }
 
   private handleOpening(seat: PlayerId, intent: Intent): void {
@@ -572,12 +573,18 @@ export class Room {
   }
 
   // Menjadwalkan langkah bot jika giliran saat ini milik kursi bot. Langkah dijalankan di tick berikutnya
-  // setelah waktunya tiba, bukan dengan setTimeout.
+  // setelah waktunya tiba, bukan dengan setTimeout. Bot yang baru mengambil alih menunggu jeda serah terima.
   private scheduleBot(): void {
+    // Tanpa manusia di meja, bot tidak dijalankan sampai ada yang ikut main.
+    if (this.firstHumanSeat() === null && !this.options.runAllBotTables) {
+      this.botDueAt = null;
+      return;
+    }
     if (this.botDueAt !== null) return;
     const seat = this.actingSeat();
     if (seat === null || !this.seats[seat].startsWith(BOT_PREFIX)) return;
-    this.botDueAt = this.now() + (this.options.botDelayMs ?? 800);
+    const due = this.now() + (this.options.botDelayMs ?? 800);
+    this.botDueAt = Math.max(due, this.handoverUntil[seat] ?? 0);
   }
 
   private botAct(): void {
