@@ -118,7 +118,10 @@ export interface RoomSnapshot {
   history: HistoryEntry[];
   profiles: (PlayerProfile | null)[];
   pausedSeat: PlayerId | null;
-  pausedAt: number | null;
+  // Snapshot lama: waktu jeda. Diganti offlineSince.
+  pausedAt?: number | null;
+  // Per kursi: sejak kapan pemain terputus. Opsional karena snapshot lama belum punya.
+  offlineSince?: (number | null)[];
   resumeStatus: RoomStatus;
   firstPlayer: PlayerId;
   opening: OpeningState | null;
@@ -160,6 +163,8 @@ export class Room {
   pausedSeat: PlayerId | null = null;
   // Per kursi: bot yang baru mengambil alih baru boleh bertindak setelah waktu ini. Null jika tidak ada jeda.
   handoverUntil: (number | null)[] = [null, null, null, null];
+  // Per kursi: sejak kapan pemain manusia terputus. Lewat batas waktu, kursinya diambil alih bot (atau dikosongkan saat menunggu).
+  offlineSince: (number | null)[] = [null, null, null, null];
 
   private readonly rng: () => number;
   private readonly now: () => number;
@@ -167,7 +172,6 @@ export class Room {
   private opening: OpeningState | null = null;
   private round: RoundState | null = null;
   private resumeStatus: RoomStatus = "opening";
-  private pausedAt: number | null = null;
   private botDueAt: number | null = null;
 
   constructor(
@@ -190,7 +194,6 @@ export class Room {
     room.session = snapshot.session;
     room.lastRoundScores = snapshot.lastRoundScores;
     room.pausedSeat = snapshot.pausedSeat;
-    room.pausedAt = snapshot.pausedAt;
     room.resumeStatus = snapshot.resumeStatus;
     room.firstPlayer = snapshot.firstPlayer;
     room.opening = snapshot.opening;
@@ -202,6 +205,11 @@ export class Room {
     room.history = snapshot.history;
     room.profiles = snapshot.profiles ?? [null, null, null, null];
     room.handoverUntil = snapshot.handoverUntil ?? [null, null, null, null];
+    room.offlineSince = snapshot.offlineSince ?? [null, null, null, null];
+    // Snapshot lama yang sedang dijeda hanya menyimpan waktu jeda untuk satu kursi.
+    if (snapshot.offlineSince === undefined && snapshot.status === "paused" && snapshot.pausedSeat !== null) {
+      room.offlineSince[snapshot.pausedSeat] = snapshot.pausedAt ?? room.now();
+    }
     return room;
   }
 
@@ -212,7 +220,6 @@ export class Room {
       session: this.session,
       lastRoundScores: this.lastRoundScores,
       pausedSeat: this.pausedSeat,
-      pausedAt: this.pausedAt,
       resumeStatus: this.resumeStatus,
       firstPlayer: this.firstPlayer,
       opening: this.opening,
@@ -224,22 +231,36 @@ export class Room {
       history: this.history,
       profiles: [...this.profiles],
       handoverUntil: [...this.handoverUntil],
+      offlineSince: [...this.offlineSince],
     };
   }
 
-  // Waktu paling awal ketika tick() perlu dipanggil lagi (bot jalan atau sesi terjeda habis). Null jika tidak ada.
+  // Waktu paling awal ketika tick() perlu dipanggil lagi (bot jalan atau batas putus habis). Null jika tidak ada.
   nextDeadline(): number | null {
-    const pauseEnds = this.status === "paused" && this.pausedAt !== null ? this.pausedAt + this.options.disconnectTimeoutMs : null;
-    const candidates = [this.botDueAt, pauseEnds].filter((t): t is number => t !== null);
+    const closed = this.status === "finished" || this.status === "cancelled";
+    const offlineEnds = closed
+      ? []
+      : this.offlineSince.filter((t): t is number => t !== null).map((t) => t + this.options.disconnectTimeoutMs);
+    const candidates = [this.botDueAt, ...offlineEnds].filter((t): t is number => t !== null);
     return candidates.length === 0 ? null : Math.min(...candidates);
   }
 
-  // Dipanggil saat waktunya tiba: kursi yang terjeda terlalu lama diambil alih bot, lalu bot yang jatuh tempo dijalankan.
+  // Dipanggil saat waktunya tiba: kursi yang terputus terlalu lama diambil alih bot, lalu bot yang jatuh tempo dijalankan.
   tick(): void {
     const now = this.now();
-    if (this.status === "paused" && this.pausedAt !== null && now - this.pausedAt >= this.options.disconnectTimeoutMs) {
-      this.toBot(this.pausedSeat!);
-      this.resume();
+    if (this.status !== "finished" && this.status !== "cancelled") {
+      this.offlineSince.forEach((since, i) => {
+        if (since === null || now - since < this.options.disconnectTimeoutMs) return;
+        const seat = i as PlayerId;
+        if (this.status === "waiting") {
+          this.seats[seat] = "";
+          this.profiles[seat] = null;
+          this.offlineSince[seat] = null;
+        } else {
+          this.toBot(seat);
+        }
+      });
+      this.updatePause();
     }
     for (let i = 0; i < MAX_BOT_STEPS_PER_TICK && this.botDueAt !== null && this.botDueAt <= now; i++) {
       this.botDueAt = null;
@@ -247,16 +268,20 @@ export class Room {
     }
   }
 
-  // Koneksi pemain putus: sesi terjeda sampai pemain kembali atau batas waktu habis.
+  // Koneksi pemain putus: dicatat per kursi. Pembukaan dan permainan terjeda sampai pemain kembali atau batas waktu habis.
   disconnect(seat: PlayerId): void {
-    if (this.status === "opening" || this.status === "playing") this.pause(seat, this.now());
+    const id = this.seats[seat];
+    if (id === "" || id.startsWith(BOT_PREFIX)) return;
+    this.offlineSince[seat] ??= this.now();
     // Pemain yang putus saat penyusunan dikonfirmasi dengan usulan otomatis, supaya ronde tidak menggantung.
     if (this.status === "scoring") this.confirmScoring(seat, null);
+    this.updatePause();
   }
 
-  // Koneksi pemain tersambung lagi: sesi yang terjeda karena pemain ini lanjut.
+  // Koneksi pemain tersambung lagi: meja lanjut kalau tidak ada lagi pemain yang terputus.
   connect(seat: PlayerId): void {
-    if (this.status === "paused" && seat === this.pausedSeat) this.resume();
+    this.offlineSince[seat] = null;
+    this.updatePause();
   }
 
   handle(seat: PlayerId, intent: Intent): void {
@@ -309,18 +334,23 @@ export class Room {
     };
   }
 
-  private pause(seat: PlayerId, now: number): void {
-    this.resumeStatus = this.status;
-    this.status = "paused";
-    this.pausedSeat = seat;
-    this.pausedAt = now;
-    this.botDueAt = null;
+  // Meja dijeda selama ada pemain terputus di pembukaan atau permainan, dan lanjut setelah semuanya kembali atau diganti bot.
+  private updatePause(): void {
+    const offline = this.offlineSince.findIndex((t) => t !== null);
+    if (this.status === "paused") {
+      if (offline === -1) this.resume();
+      else this.pausedSeat = offline as PlayerId;
+    } else if (offline !== -1 && (this.status === "opening" || this.status === "playing")) {
+      this.resumeStatus = this.status;
+      this.status = "paused";
+      this.pausedSeat = offline as PlayerId;
+      this.botDueAt = null;
+    }
   }
 
   private resume(): void {
     this.status = this.resumeStatus;
     this.pausedSeat = null;
-    this.pausedAt = null;
     this.scheduleBot();
   }
 
@@ -489,6 +519,7 @@ export class Room {
     this.firstPlayer = nextFirstPlayer(this.session.totals);
     this.opening = this.newOpening();
     this.status = "opening";
+    this.updatePause();
   }
 
   private newOpening(): OpeningState {
@@ -516,6 +547,7 @@ export class Room {
     if (seat === null) throw new Error("NO_SEAT");
     this.seats[seat] = userId;
     this.handoverUntil[seat] = null;
+    this.offlineSince[seat] = null;
     this.becomeOpeningIfFull();
     this.scheduleBot();
     return seat;
@@ -532,12 +564,19 @@ export class Room {
     if (this.status === "waiting") {
       this.seats[seat] = "";
       this.profiles[seat] = null;
+      this.offlineSince[seat] = null;
       return;
     }
     this.toBot(seat);
-    if (this.status === "paused" && this.pausedSeat === seat) this.resume();
+    this.updatePause();
     if (this.status === "scoring") this.confirmScoring(seat, null);
     this.scheduleBot();
+  }
+
+  // Kursi milik user ini, dari daftar kursi saat ini. Null untuk penonton.
+  seatOf(userId: string): PlayerId | null {
+    const seat = this.seats.indexOf(userId);
+    return seat === -1 ? null : (seat as PlayerId);
   }
 
   // Pemain manusia di kursi paling awal. Hanya dia yang boleh reset game.
@@ -557,6 +596,7 @@ export class Room {
     this.seats[seat] = `${BOT_PREFIX}${seat + 1}`;
     this.profiles[seat] = null;
     this.handoverUntil[seat] = this.now() + HANDOVER_MS;
+    this.offlineSince[seat] = null;
   }
 
   private addBots(): void {
@@ -569,6 +609,7 @@ export class Room {
   private becomeOpeningIfFull(): void {
     if (this.status !== "waiting" || this.seats.includes("")) return;
     this.status = "opening";
+    this.updatePause();
     this.scheduleBot();
   }
 

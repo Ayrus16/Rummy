@@ -29,7 +29,7 @@ Tanggal: Oct 24, 2026 · @Ibang
 
 1. Pemain bisa menekan **"Keluar dari meja"** kapan saja. Kursinya langsung menjadi bot (`bot:N`) dan profilnya dihapus. Pengecualian: saat `waiting`, kursinya menjadi kosong (`""`). Orang itu menjadi penonton.
 2. Kalau pemain putus saat `opening`/`playing`, permainan dijeda seperti sekarang. Kalau dalam **60 detik** pemain itu tidak kembali, kursinya menjadi bot dan permainan lanjut. Sesi tidak lagi dibatalkan karena putus.
-3. Pemain yang putus saat penyusunan (`scoring`) tetap dikonfirmasi dengan usulan otomatis, seperti sekarang. Kursinya tidak diganti bot.
+3. Waktu putus dicatat per kursi di semua status. Pemain yang putus saat penyusunan (`scoring`) tetap dikonfirmasi dengan usulan otomatis; kalau 60 detik belum kembali, kursinya juga diganti bot supaya ronde berikutnya tidak macet. Saat menunggu (`waiting`), kursi yang putus 60 detik dikosongkan. Beberapa pemain bisa putus bersamaan; meja tetap dijeda sampai semuanya kembali atau diganti bot.
 4. **Jeda serah terima:** setiap kali kursi baru saja diambil alih bot (keluar sengaja atau putus 60 detik), bot di kursi itu menunggu **10 detik** sebelum langkah pertamanya, supaya penonton sempat menekan "Ikut main" dan meneruskan posisi itu. Bot di kursi lain tidak terpengaruh.
 5. Pemain yang kembali setelah kursinya diganti bot masuk sebagai penonton. Ia bisa menekan "Ikut main" untuk mengambil kursi bot mana pun, termasuk kursinya sendiri.
 

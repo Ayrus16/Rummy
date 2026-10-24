@@ -401,3 +401,63 @@ test("view tells who may sit and who may reset", () => {
   room.leave(2);
   expect(viewFor(room, null).canSit).toBe(true);
 });
+
+test("seatOf finds a user's seat from the seats, not from a stored attachment", () => {
+  const room = newRoom();
+  expect(room.seatOf("u2")).toBe(2);
+  expect(room.seatOf("x")).toBeNull();
+  room.leave(2);
+  expect(room.seatOf("u2")).toBeNull();
+});
+
+test("two players dropping: both seats go to bots after the timeout and play resumes", () => {
+  const room = newRoom();
+  room.disconnect(1);
+  room.disconnect(2);
+  advance(room, TIMEOUT_MS + 100);
+  expect(room.seats[1]).toBe("bot:2");
+  expect(room.seats[2]).toBe("bot:3");
+  expect(room.status).toBe("opening");
+});
+
+test("one of two dropped players returning keeps the pause for the other", () => {
+  const room = newRoom();
+  room.disconnect(1);
+  room.disconnect(2);
+  room.connect(1);
+  expect(room.status).toBe("paused");
+  expect(room.pausedSeat).toBe(2);
+  room.connect(2);
+  expect(room.status).toBe("opening");
+});
+
+test("a player dropping from a waiting room loses the seat only after the timeout", () => {
+  const room = waitingRoom();
+  room.sit("u1");
+  room.disconnect(1);
+  advance(room, TIMEOUT_MS - 1000);
+  expect(room.seats[1]).toBe("u1");
+  advance(room, 2000);
+  expect(room.seats[1]).toBe("");
+});
+
+test("starting the game while a seated player is offline pauses for them", () => {
+  const room = waitingRoom();
+  room.sit("u1");
+  room.disconnect(1);
+  room.handle(0, { type: "add_bots" });
+  expect(room.status).toBe("paused");
+  expect(room.pausedSeat).toBe(1);
+});
+
+test("an old paused snapshot without offline times still times out to a bot", () => {
+  const room = newRoom();
+  room.disconnect(1);
+  const snapshot = JSON.parse(JSON.stringify(room.snapshot()));
+  delete snapshot.offlineSince;
+  snapshot.pausedAt = Date.now();
+  const restored = Room.restore(snapshot, { target: 1000, disconnectTimeoutMs: TIMEOUT_MS, rng: () => 0 });
+  advance(restored, TIMEOUT_MS + 100);
+  expect(restored.seats[1]).toBe("bot:2");
+  expect(restored.status).toBe("opening");
+});
