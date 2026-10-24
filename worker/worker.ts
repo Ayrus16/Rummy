@@ -12,7 +12,8 @@ export interface Env {
   DISCORD_BOT_TOKEN: string;
 }
 
-type Attachment = { userId: string; seat: PlayerId };
+// seat null = penonton.
+type Attachment = { userId: string; seat: PlayerId | null };
 
 type ClientMessage =
   | { type: "hello"; token: string; instanceId: string }
@@ -20,12 +21,6 @@ type ClientMessage =
 
 const ID_RE = /^[\w.:-]{1,200}$/;
 const ROOM_OPTIONS: RoomOptions = { target: 1000, disconnectTimeoutMs: 60_000 };
-
-// Kursi awal dari peserta yang sudah masuk. Sisanya kosong ("") sampai ada pemain lain atau bot ditambahkan.
-function seatsFrom(members: string[]): string[] {
-  if (members.length > 4) throw new Error("TOO_MANY_PLAYERS");
-  return [...members, ...Array.from({ length: 4 - members.length }, () => "")];
-}
 
 function errorOf(err: unknown): string {
   return err instanceof Error ? err.message : "UNKNOWN";
@@ -69,12 +64,13 @@ export class Table extends DurableObject<Env> {
       return;
     }
     if (attachment === null) return; // belum hello: intent diabaikan
-    await this.intent(ws, attachment.seat, msg.intent);
+    await this.intent(ws, attachment, msg.intent);
   }
 
   async webSocketClose(ws: WebSocket) {
     const attachment = ws.deserializeAttachment() as Attachment | null;
-    if (attachment === null) return;
+    // Penonton yang putus tidak menjeda permainan.
+    if (attachment === null || attachment.seat === null) return;
     const room = await this.load();
     if (room === null) return;
     room.disconnect(attachment.seat);
@@ -112,50 +108,43 @@ export class Table extends DurableObject<Env> {
     if (bound !== undefined && bound !== msg.instanceId) return this.reject(ws, "INSTANCE_MISMATCH");
 
     let room = await this.load();
-    const seated = room !== null && room.seats.includes(userId);
-    try {
-      if (room === null || room.status === "finished" || room.status === "cancelled") {
-        // Peserta diambil dari Discord, bukan dari klien. Hanya anggota instance yang boleh membuat meja.
-        const members = await this.instanceMembers(msg.instanceId);
-        if (!members.includes(userId)) return this.reject(ws, "NOT_SEATED");
-        room = createRoom(seatsFrom(members), ROOM_OPTIONS);
-        for (const [i, id] of members.entries()) {
-          room.setProfile(i as PlayerId, await fetchProfile(id, this.env.DISCORD_BOT_TOKEN));
-        }
-        await this.ctx.storage.put("instanceId", msg.instanceId);
-      } else if (!seated) {
-        const members = await this.instanceMembers(msg.instanceId);
-        if (!members.includes(userId)) return this.reject(ws, "NOT_SEATED");
+    // Hanya anggota instance Activity yang boleh masuk, sebagai pemain maupun penonton.
+    if (room === null || !room.seats.includes(userId)) {
+      let members: string[];
+      try {
+        members = await this.instanceMembers(msg.instanceId);
+      } catch (err) {
+        return this.reject(ws, errorOf(err));
       }
-    } catch (err) {
-      return this.reject(ws, errorOf(err));
+      if (!members.includes(userId)) return this.reject(ws, "NOT_SEATED");
     }
-    room!.tick();
+    if (room === null || room.status === "finished" || room.status === "cancelled") {
+      // Pembuat meja langsung duduk di kursi 1. Yang lain masuk sebagai penonton dan memilih ikut main.
+      room = createRoom([userId, "", "", ""], ROOM_OPTIONS);
+      await this.ctx.storage.put("instanceId", msg.instanceId);
+    }
+    room.tick();
 
-    const existing = room!.seats.indexOf(userId);
-    let seat: PlayerId;
-    if (existing !== -1) {
-      seat = existing as PlayerId;
-    } else {
-      const claimed = room!.claimBotSeat(userId);
-      if (claimed === null) return this.reject(ws, "NOT_SEATED");
-      seat = claimed;
-    }
-    // Profil diambil saat pertama kali duduk. Kalau belum ada (misal gagal sebelumnya), diambil ulang.
-    if (room!.profiles[seat] === null) {
-      room!.setProfile(seat, await fetchProfile(userId, this.env.DISCORD_BOT_TOKEN));
+    const index = room.seats.indexOf(userId);
+    const seat = index === -1 ? null : (index as PlayerId);
+    if (seat !== null) {
+      // Profil diambil saat pertama kali duduk. Kalau belum ada (misal gagal sebelumnya), diambil ulang.
+      if (room.profiles[seat] === null) room.setProfile(seat, await fetchProfile(userId, this.env.DISCORD_BOT_TOKEN));
+      room.connect(seat);
     }
     ws.serializeAttachment({ userId, seat } satisfies Attachment);
-    room!.connect(seat);
-    await this.commit(room!);
+    await this.commit(room);
   }
 
-  private async intent(ws: WebSocket, seat: PlayerId, intent: Intent) {
+  private async intent(ws: WebSocket, attachment: Attachment, intent: Intent) {
     const loaded = await this.load();
     if (loaded === null) return ws.send(JSON.stringify({ type: "error", error: "ROOM_NOT_FOUND" }));
+    const { seat } = attachment;
+    // Penonton hanya boleh ikut main.
+    if (seat === null && intent.type !== "sit") return ws.send(JSON.stringify({ type: "error", error: "SPECTATOR" }));
     // Reset membuat ruang baru dengan kursi yang sama (termasuk bot dan pemain yang sudah masuk).
     if (intent.type === "reset") {
-      if (seat !== 0) return ws.send(JSON.stringify({ type: "error", error: "RESET_NOT_ALLOWED" }));
+      if (seat !== loaded.firstHumanSeat()) return ws.send(JSON.stringify({ type: "error", error: "RESET_NOT_ALLOWED" }));
       const next = createRoom([...loaded.seats], ROOM_OPTIONS);
       next.setProfiles(loaded.profiles);
       return this.commit(next);
@@ -164,7 +153,17 @@ export class Table extends DurableObject<Env> {
     room.tick();
     let error: string | null = null;
     try {
-      room.handle(seat, intent);
+      if (intent.type === "sit") {
+        if (seat !== null) throw new Error("ALREADY_SEATED");
+        const taken = room.sit(attachment.userId);
+        ws.serializeAttachment({ ...attachment, seat: taken } satisfies Attachment);
+        room.setProfile(taken, await fetchProfile(attachment.userId, this.env.DISCORD_BOT_TOKEN));
+      } else if (intent.type === "leave") {
+        room.leave(seat as PlayerId);
+        ws.serializeAttachment({ ...attachment, seat: null } satisfies Attachment);
+      } else {
+        room.handle(seat as PlayerId, intent);
+      }
     } catch (err) {
       error = errorOf(err);
     }
