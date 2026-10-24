@@ -1,13 +1,22 @@
 import { baseValue, type Card, type Rank } from "./cards";
 import { classify } from "./combos";
-import { pickableFromDiscard } from "./discard";
-import { subsets } from "./subsets";
+import { pickableFromDiscard, pickupRefusal } from "./discard";
+import { canPartition, removeCards } from "./partition";
+import { hasPureSeri } from "./scoring";
 import type { DiscardPile, PlayerId } from "./opening";
 
 export interface RoundResult {
   closedBy: PlayerId | "stock_empty";
   bonus: number;
   closingCard: Card | null;
+  // Pemain tercekih yang kena hukuman, dan nilainya (negatif). Null/0 jika tidak ada.
+  cekihTarget: PlayerId | null;
+  cekihPenalty: number;
+}
+
+export interface Cekih {
+  caller: PlayerId;
+  target: PlayerId;
 }
 
 export interface RoundState {
@@ -15,6 +24,7 @@ export interface RoundState {
   stock: Card[];
   discard: DiscardPile;
   jokerRank: Rank | null;
+  jokerCard?: Card | null;
   turn: PlayerId;
   phase: "draw" | "discard";
   drewFrom: "stock" | "discard" | null;
@@ -22,9 +32,14 @@ export interface RoundState {
   table: Card[][][];
   penalties: number[];
   result: RoundResult | null;
+  cekih: Cekih[];
+  discardOwner: Record<string, PlayerId>;
+  pickedFromDiscard: boolean[];
+  takenOwners: PlayerId[];
 }
 
 const CLOSED_FROM_STOCK_BONUS = 250;
+const CEKIH_MULTIPLIER = 10;
 const JOKER_PENALTY_MULTIPLIER = 10;
 const NEXT_SEAT_COUNT = 4;
 
@@ -43,40 +58,53 @@ export function drawFromStock(state: RoundState, player: PlayerId): RoundState {
 // Syarat: pemain sudah pernah menurunkan seri murni di ronde ini.
 // Kombinasi = kartu yang dituju + minimal dua kartu dari tangan.
 // Kartu di atas kartu yang dituju tetap masuk tangan.
+// Kartu yang diambil adalah target dan semua kartu di atasnya. Kartu target wajib masuk kombinasi.
+// Kartu lain di atas target boleh ikut kombinasi (fromDiscard), sisanya masuk tangan.
+// Kombinasi harus memakai minimal 2 kartu dari tangan.
 export function pickFromDiscard(
   state: RoundState,
   player: PlayerId,
   target: Card,
   handCards: Card[],
+  fromDiscard: Card[] = [],
 ): RoundState {
   assertTurn(state, player, "draw");
-  if (!state.laidPureSeri[player]) throw new Error("NEED_PURE_SERI");
   const taken = pickableFromDiscard(state.discard, target);
-  if (taken === null) throw new Error("PICKUP_BLOCKED");
+  if (taken === null) throw new Error(pickupRefusal(state.discard, target));
   if (handCards.length < 2) throw new Error("INVALID_MELD");
-  const meld = [target, ...handCards];
-  if (classify(meld, state.jokerRank).kind === "invalid") throw new Error("INVALID_MELD");
+  const above = taken.filter((card) => card.id !== target.id);
+  if (!fromDiscard.every((card) => above.some((a) => a.id === card.id))) throw new Error("INVALID_MELD");
+  const meld = [target, ...fromDiscard, ...handCards];
+  const check = classify(meld, state.jokerRank);
+  if (check.kind === "invalid") throw new Error("INVALID_MELD");
+  // Pengambilan pertama di ronde harus sekaligus membentuk seri murni. Tris As tanpa joker juga seri murni.
+  if (!state.laidPureSeri[player] && !check.pure) throw new Error("NEED_PURE_SERI");
 
   const remaining = [
     ...removeCards(state.hands[player], handCards),
-    ...taken.filter((card) => card.id !== target.id),
+    ...above.filter((card) => !fromDiscard.some((f) => f.id === card.id)),
   ];
   const table = state.table.map((melds, seat) => (seat === player ? [...melds, meld] : melds));
+  const laidPureSeri = state.laidPureSeri.map((flag, seat) => (seat === player ? true : flag));
   const targetIndex = state.discard.cards.findIndex((card) => card.id === target.id);
   return {
     ...state,
     discard: { ...state.discard, cards: state.discard.cards.slice(0, targetIndex) },
     hands: withHand(state, player, remaining),
     table,
+    laidPureSeri,
     phase: "discard",
     drewFrom: "discard",
+    pickedFromDiscard: state.pickedFromDiscard.map((flag, seat) => (seat === player ? true : flag)),
+    takenOwners: taken.map((card) => state.discardOwner[card.id]),
   };
 }
 
 export function layDownPureSeri(state: RoundState, player: PlayerId, cards: Card[]): RoundState {
   assertTurn(state, player);
   const check = classify(cards, state.jokerRank);
-  if (check.kind !== "seri" || !check.pure) throw new Error("NOT_PURE_SERI");
+  // Seri murni: seri tanpa joker, atau tris As tanpa joker.
+  if (!check.pure) throw new Error("NOT_PURE_SERI");
   const hand = removeCards(state.hands[player], cards);
   const laidPureSeri = state.laidPureSeri.map((flag, seat) => (seat === player ? true : flag));
   const table = state.table.map((melds, seat) => (seat === player ? [...melds, cards] : melds));
@@ -96,12 +124,20 @@ export function discardCard(state: RoundState, player: PlayerId, card: Card): Ro
     cards: [...state.discard.cards, card],
     closedIndex: isJoker ? state.discard.cards.length : state.discard.closedIndex,
   };
-  const next = { ...state, hands: withHand(state, player, hand), discard, penalties };
+  const next = {
+    ...state,
+    hands: withHand(state, player, hand),
+    discard,
+    penalties,
+    discardOwner: { ...state.discardOwner, [card.id]: player },
+    takenOwners: [],
+  };
 
   const closed = checkClosed(state, player, card);
+  // Hukuman cekih disimpan di result, terpisah dari penalti joker.
   if (closed) return { ...next, result: closed };
   if (state.stock.length === 0) {
-    return { ...next, result: { closedBy: "stock_empty", bonus: 0, closingCard: null } };
+    return { ...next, result: { closedBy: "stock_empty", bonus: 0, closingCard: null, cekihTarget: null, cekihPenalty: 0 } };
   }
   return {
     ...next,
@@ -115,11 +151,28 @@ export function discardCard(state: RoundState, player: PlayerId, card: Card): Ro
 export function checkClosed(state: RoundState, player: PlayerId, card: Card): RoundResult | null {
   const rest = removeCards(state.hands[player], [card]);
   if (!canPartition(rest, state.jokerRank)) return null;
-  const bonus =
-    state.drewFrom === "stock"
-      ? CLOSED_FROM_STOCK_BONUS
-      : 10 * baseValue(card.rank);
-  return { closedBy: player, bonus, closingCard: card };
+  // Menutup (tutup atau tutup tangan) harus punya seri murni: sudah diturunkan, atau ada di tangan.
+  if (!state.laidPureSeri[player] && !hasPureSeri(rest, state.jokerRank)) return null;
+  // Tutup tangan: tidak pernah mengambil dari buangan di ronde ini. Bonus 250, tanpa efek cekih.
+  if (!state.pickedFromDiscard[player]) {
+    return { closedBy: player, bonus: CLOSED_FROM_STOCK_BONUS, closingCard: card, cekihTarget: null, cekihPenalty: 0 };
+  }
+  // Tutup biasa: bonus dan hukuman hanya lewat cekih yang cocok.
+  const target = matchingCekihTarget(state, player);
+  if (target === null) {
+    return { closedBy: player, bonus: 0, closingCard: card, cekihTarget: null, cekihPenalty: 0 };
+  }
+  const amount = CEKIH_MULTIPLIER * baseValue(card.rank);
+  return { closedBy: player, bonus: amount, closingCard: card, cekihTarget: target, cekihPenalty: -amount };
+}
+
+// Pemain penutup harus punya cekih aktif ke pemain yang kartunya ikut diambil pada giliran ini.
+// Hanya cekih milik pemain penutup yang dihitung.
+function matchingCekihTarget(state: RoundState, closer: PlayerId): PlayerId | null {
+  for (const { caller, target } of state.cekih) {
+    if (caller === closer && state.takenOwners.includes(target)) return target;
+  }
+  return null;
 }
 
 function assertTurn(state: RoundState, player: PlayerId, phase?: "draw" | "discard"): void {
@@ -132,24 +185,5 @@ function withHand(state: RoundState, player: PlayerId, hand: Card[]): Card[][] {
   return state.hands.map((h, seat) => (seat === player ? hand : h));
 }
 
-function removeCards(hand: Card[], cards: Card[]): Card[] {
-  const out = [...hand];
-  for (const card of cards) {
-    const index = out.findIndex((held) => held.id === card.id);
-    if (index === -1) throw new Error("CARD_NOT_IN_HAND");
-    out.splice(index, 1);
-  }
-  return out;
-}
 
 // Apakah kartu ini bisa dibagi menjadi kombinasi sah (3–4 kartu) semuanya.
-function canPartition(cards: Card[], jokerRank: Rank | null): boolean {
-  if (cards.length === 0) return true;
-  const [first, ...rest] = cards;
-  for (const group of subsets(rest, 2, 3)) {
-    const meld = [first, ...group];
-    if (classify(meld, jokerRank).kind === "invalid") continue;
-    if (canPartition(removeCards(rest, group), jokerRank)) return true;
-  }
-  return false;
-}

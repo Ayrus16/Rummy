@@ -1,37 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Remi Indonesia (Discord Activity)
 
-## Getting Started
+Permainan kartu Remi Indonesia untuk 4 pemain di dalam Discord Activity. Aturan ada di `Spesifikasi Aturan Remi Indonesia.md`, dan keputusan desain ada di `docs/superpowers/specs/`.
 
-First, run the development server:
+## Arsitektur
+
+- **Next.js di Vercel**: halaman Activity (`app/activity`) dan `/api/token` untuk menukar kode OAuth Discord.
+- **Cloudflare Worker + Durable Object** (`worker/`): satu `Table` per peluncuran Activity (`instanceId`). State ruang disimpan di storage Durable Object, dan klien tersambung lewat WebSocket.
+- **Logika permainan** (`src/rules/`, `server/room.ts`): murni TypeScript tanpa I/O, dipakai oleh Durable Object.
+
+## Menjalankan di lokal
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+cp .env.example .env.local   # isi nilainya
+pnpm dev                     # web di http://localhost:3000
+pnpm worker:dev              # Worker di http://localhost:8788
+pnpm test                    # tes logika ruang dan aturan
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Di luar Discord, isi `NEXT_PUBLIC_WS_URL=ws://localhost:8788` di `.env.local`. Di dalam Discord, kosongkan variabel itu.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Deploy
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+**Worker (Cloudflare)**
 
-## Learn More
+```bash
+pnpm exec wrangler login
+pnpm worker:deploy
+pnpm worker:secret   # isi dengan bot token dari Developer Portal -> Bot
+```
 
-To learn more about Next.js, take a look at the following resources:
+`DISCORD_APPLICATION_ID` ada di `worker/wrangler.jsonc`. Bot token wajib karena server memanggil REST Discord untuk memverifikasi peserta instance.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**Web (Vercel)**
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Import repo ke Vercel, lalu isi environment variable: `NEXT_PUBLIC_DISCORD_CLIENT_ID`, `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`. Bot untuk testing tidak perlu env, cukup tekan tombol Tambah bot di dalam Activity.
 
-## Deploy on Vercel
+**Discord Developer Portal** (Activities -> URL Mappings)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- Prefix `/` -> domain Vercel.
+- Prefix `/ws` -> host Worker, misalnya `remi-room-server.<subdomain>.workers.dev` (tanpa `https://`).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-# Rummy
+## Batasan yang diketahui
+
+- Bot hanya mengisi kursi kosong untuk testing. Bot tidak menggantikan pemain yang terputus.
+- Bot tidak pernah mengambil dari buangan dan tidak pernah menurunkan kartu, jadi permainan dengan semua bot tidak akan mencapai target skor.

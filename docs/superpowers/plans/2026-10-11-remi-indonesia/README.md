@@ -1,5 +1,7 @@
 # Remi Indonesia Discord Activity Implementation Plan
 
+> **Catatan:** dokumen rencana ini ditulis sebelum arsitektur berubah. Socket.IO sudah diganti dengan Cloudflare Worker + Durable Object, dan penyimpanan dengan storage Durable Object. Keadaan terkini ada di `docs/superpowers/specs/2026-10-11-remi-indonesia-design.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build Remi Indonesia for 4 players as a Discord Activity, with server-authoritative rules, realtime sync, and per-player hidden hands.

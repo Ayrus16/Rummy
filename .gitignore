@@ -40,3 +40,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .superpowers/
+!.env.example
+
+# cloudflare worker (wrangler)
+.wrangler
+.dev.vars
+
+.vercel
