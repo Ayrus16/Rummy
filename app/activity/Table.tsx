@@ -12,6 +12,7 @@ import {
 import type { Card } from "../../src/rules/cards";
 import { canCallCekih, cekihTargets } from "../../src/rules/cekih";
 import { classify } from "../../src/rules/combos";
+import { isMuted, playSound, setMuted, soundsFor } from "../../src/client/sound";
 import type { PlayerId } from "../../src/rules/opening";
 import type { Intent } from "../../server/room";
 import type { PlayerInfo, PlayerView } from "../../server/view";
@@ -32,6 +33,8 @@ function bySuitThenRank(a: Card, b: Card): number {
 }
 
 const TARGET_PRESETS = [500, 1000, 1500, 2000];
+// Kalau giliranmu belum dimainkan selama ini, bunyi giliran diulang sekali.
+const TURN_REMINDER_MS = 20_000;
 // Popup joker tertutup saat pemain klik OK, atau otomatis setelah sekian detik.
 const JOKER_POPUP_SECONDS = 15;
 
@@ -180,6 +183,20 @@ export function Table({ view, error, onIntent }: TableProps) {
   const discardPhase = board?.phase === "discard";
   // Pembukaan memakai status "opening", permainan memakai "playing". Keduanya boleh bertindak saat gilirannya.
   const playable = board !== null && (view.status === "opening" || view.status === "playing") && myTurn;
+
+  // Suara dibunyikan dari perubahan tampilan: giliran, cekih, joker, ronde selesai, dan gerakan kartu.
+  const [muted, setMutedState] = useState(isMuted);
+  const prevView = useRef<PlayerView | null>(null);
+  useEffect(() => {
+    soundsFor(prevView.current, view).forEach(playSound);
+    prevView.current = view;
+  }, [view]);
+  // Pengingat giliran. Timer mulai ulang setiap ada update, jadi hanya berbunyi kalau giliran didiamkan.
+  useEffect(() => {
+    if (!playable) return;
+    const timer = setTimeout(() => playSound("turn"), TURN_REMINDER_MS);
+    return () => clearTimeout(timer);
+  }, [playable, view]);
   const scoringPhase = view.status === "scoring" && view.scoring !== null;
   const emptySeats = view.seats.filter((seat) => seat === "").length;
   const nameOf = (seat: number) => view.players[seat]?.name ?? `P${seat + 1}`;
@@ -333,7 +350,20 @@ export function Table({ view, error, onIntent }: TableProps) {
         </div>
       )}
       <header className={styles.header}>
-        <div>Target {view.target} · Ronde {view.rounds}</div>
+        <div>
+          Target {view.target} · Ronde {view.rounds}{" "}
+          <button
+            type="button"
+            className={styles.tool}
+            aria-label={muted ? "Nyalakan suara" : "Matikan suara"}
+            onClick={() => {
+              setMuted(!muted);
+              setMutedState(!muted);
+            }}
+          >
+            {muted ? "🔇" : "🔊"}
+          </button>
+        </div>
         <div className={styles.totals}>
           {view.seats.map((_, seat) => (
             <span key={seat} className={styles.playerRow + (seat === view.you ? " " + styles.me : "")}>
