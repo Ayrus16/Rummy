@@ -22,6 +22,15 @@ function botRoom(): Room {
   });
 }
 
+function waitingRoom(): Room {
+  return createRoom(["u0", "", "", ""], {
+    target: 1000,
+    disconnectTimeoutMs: TIMEOUT_MS,
+    rng: () => 0,
+    botDelayMs: 10,
+  });
+}
+
 // Maju waktu sambil menjalankan tick, seperti alarm Durable Object yang dipanggil saat tiba waktunya.
 function advance(room: Room, ms: number): void {
   for (let t = 0; t < ms; t += 10) {
@@ -217,16 +226,68 @@ test("room waits for seats, bots fill empty seats, and play starts when full", (
 });
 
 test("a player joining a waiting room takes an empty seat", () => {
-  const room = createRoom(["u0", "", "", ""], {
-    target: 1000,
-    disconnectTimeoutMs: TIMEOUT_MS,
-    rng: () => 0,
-  });
-  expect(room.claimBotSeat("u1")).toBe(1);
+  const room = waitingRoom();
+  expect(room.sit("u1")).toBe(1);
   expect(room.status).toBe("waiting");
-  room.claimBotSeat("u2");
-  room.claimBotSeat("u3");
+  room.sit("u2");
+  room.sit("u3");
   expect(room.status).toBe("opening");
+});
+
+test("sit takes a bot seat once the table is full, and refuses when all seats are human", () => {
+  const room = waitingRoom();
+  room.sit("u1");
+  room.handle(0, { type: "add_bots" });
+  expect(room.seats).toEqual(["u0", "u1", "bot:3", "bot:4"]);
+  expect(room.sit("u2")).toBe(2);
+  expect(room.sit("u3")).toBe(3);
+  expect(room.canSit()).toBe(false);
+  expect(() => room.sit("u4")).toThrow("NO_SEAT");
+});
+
+test("leaving a waiting room empties the seat", () => {
+  const room = waitingRoom();
+  room.sit("u1");
+  room.setProfile(1, { name: "U1", avatarUrl: "" });
+  room.leave(1);
+  expect(room.seats[1]).toBe("");
+  expect(room.profiles[1]).toBeNull();
+});
+
+test("leaving during play turns the seat into a bot", () => {
+  const room = newRoom();
+  room.leave(2);
+  expect(room.seats[2]).toBe("bot:3");
+  expect(room.canSit()).toBe(true);
+  expect(() => room.leave(2)).toThrow("NOT_SEATED");
+});
+
+test("the paused player leaving resumes the game", () => {
+  const room = newRoom();
+  room.disconnect(1);
+  room.leave(1);
+  expect(room.status).toBe("opening");
+  expect(room.pausedSeat).toBeNull();
+});
+
+test("another seat leaving or sitting while paused keeps the pause", () => {
+  const room = newRoom();
+  room.disconnect(1);
+  room.leave(2);
+  expect(room.sit("u9")).toBe(2);
+  expect(room.status).toBe("paused");
+  expect(room.pausedSeat).toBe(1);
+});
+
+test("reset belongs to the first human seat", () => {
+  const room = newRoom();
+  expect(room.firstHumanSeat()).toBe(0);
+  room.leave(0);
+  expect(room.firstHumanSeat()).toBe(1);
+  room.leave(1);
+  room.leave(2);
+  room.leave(3);
+  expect(room.firstHumanSeat()).toBeNull();
 });
 
 test("view labels empty seats, bots, and humans without a profile", () => {

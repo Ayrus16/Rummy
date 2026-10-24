@@ -46,6 +46,9 @@ export type Intent =
   | { type: "cekih_batal"; target: number }
   // Ditangani di worker (membuat ruang baru), bukan di Room.handle.
   | { type: "reset" }
+  // Ditangani di worker: penonton ikut main, atau pemain keluar dan kursinya diambil alih bot.
+  | { type: "sit" }
+  | { type: "leave" }
   // Hanya saat fase penyusunan (status "scoring"): susunan kombinasi tangan lalu konfirmasi.
   | { type: "confirm"; melds: string[][] }
   // Hanya sebelum ronde pertama selesai. Target 100 sampai 5000.
@@ -89,6 +92,9 @@ export interface RoundDetail {
 
 // Kursi dengan ID berawalan ini dikendalikan server (bot), bukan oleh pemain.
 export const BOT_PREFIX = "bot:";
+
+// Bot yang baru mengambil alih kursi menunggu selama ini sebelum langkah pertamanya, supaya penonton sempat ikut main.
+export const HANDOVER_MS = 10_000;
 
 export interface RoomOptions {
   target: number;
@@ -148,6 +154,8 @@ export class Room {
   session: SessionState;
   lastRoundScores: number[] | null = null;
   pausedSeat: PlayerId | null = null;
+  // Per kursi: bot yang baru mengambil alih baru boleh bertindak setelah waktu ini. Null jika tidak ada jeda.
+  handoverUntil: (number | null)[] = [null, null, null, null];
 
   private readonly rng: () => number;
   private readonly now: () => number;
@@ -501,26 +509,53 @@ export class Room {
     this.profiles = [...profiles];
   }
 
-  // Pemain yang masuk setelah ruang dibuat boleh mengambil kursi bot yang belum bertindak
-  // di pembukaan. Dipakai untuk testing dengan sedikit akun.
-  claimBotSeat(userId: string): PlayerId | null {
+  // Penonton ikut main: kursi kosong saat menunggu didahulukan, lalu kursi bot (meneruskan tangan dan poinnya).
+  sit(userId: string): PlayerId {
+    const seat = this.openSeat();
+    if (seat === null) throw new Error("NO_SEAT");
+    this.seats[seat] = userId;
+    this.handoverUntil[seat] = null;
+    this.becomeOpeningIfFull();
+    this.scheduleBot();
+    return seat;
+  }
+
+  canSit(): boolean {
+    return this.openSeat() !== null;
+  }
+
+  // Pemain keluar: kursinya jadi bot, atau kosong kalau meja masih menunggu pemain.
+  leave(seat: PlayerId): void {
+    const id = this.seats[seat];
+    if (id === "" || id.startsWith(BOT_PREFIX)) throw new Error("NOT_SEATED");
     if (this.status === "waiting") {
-      const empty = this.seats.indexOf("");
-      if (empty === -1) return null;
-      this.seats[empty] = userId;
-      this.becomeOpeningIfFull();
-      return empty as PlayerId;
+      this.seats[seat] = "";
+      this.profiles[seat] = null;
+      return;
     }
-    if (this.status !== "opening" || this.opening === null) return null;
-    const order = this.openingOrder();
-    for (let i = this.opening.discard.cards.length; i < order.length; i++) {
-      const seat = order[i];
-      if (!this.seats[seat].startsWith(BOT_PREFIX)) continue;
-      this.seats[seat] = userId;
-      this.scheduleBot();
-      return seat;
-    }
-    return null;
+    this.toBot(seat);
+    if (this.status === "paused" && this.pausedSeat === seat) this.resume();
+    if (this.status === "scoring") this.confirmScoring(seat, null);
+    this.scheduleBot();
+  }
+
+  // Pemain manusia di kursi paling awal. Hanya dia yang boleh reset game.
+  firstHumanSeat(): PlayerId | null {
+    const seat = this.seats.findIndex((id) => id !== "" && !id.startsWith(BOT_PREFIX));
+    return seat === -1 ? null : (seat as PlayerId);
+  }
+
+  private openSeat(): PlayerId | null {
+    if (this.status === "finished" || this.status === "cancelled") return null;
+    const empty = this.status === "waiting" ? this.seats.indexOf("") : -1;
+    const seat = empty !== -1 ? empty : this.seats.findIndex((id) => id.startsWith(BOT_PREFIX));
+    return seat === -1 ? null : (seat as PlayerId);
+  }
+
+  private toBot(seat: PlayerId): void {
+    this.seats[seat] = `${BOT_PREFIX}${seat + 1}`;
+    this.profiles[seat] = null;
+    this.handoverUntil[seat] = this.now() + HANDOVER_MS;
   }
 
   private addBots(): void {
