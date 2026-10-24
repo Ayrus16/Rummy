@@ -31,6 +31,7 @@ export function maskDiscard(cards: Card[], jokerRank: Rank | null): PublicCard[]
 
 export interface PublicBoard {
   jokerRank: Rank | null;
+  jokerCard: Card | null;
   stockCount: number;
   discard: { cards: PublicCard[]; closedIndex: number | null };
   table: Card[][][];
@@ -107,6 +108,7 @@ export function viewFor(room: Room, seat: PlayerId): PlayerView {
     pausedSeat: room.pausedSeat,
     board: board && {
       jokerRank: board.jokerRank,
+      jokerCard: board.jokerCard,
       stockCount: board.stock.length,
       discard: { cards: maskDiscard(board.discard.cards, board.jokerRank), closedIndex: board.discard.closedIndex },
       table: board.table,

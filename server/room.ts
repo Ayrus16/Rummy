@@ -12,8 +12,8 @@ import {
   type PlayerId,
 } from "../src/rules/opening";
 import {
-  canUseJokerMelds,
-  containsJoker,
+  canUseMelds,
+  cekihPenaltyOf,
   finalScores,
   handArrangement,
   loneValue,
@@ -77,8 +77,13 @@ export interface RoundDetail {
   meldValues: number[];
   leftover: Card[];
   leftoverValues: number[];
+  // Penalti buang joker.
   penalty: number;
+  // Bonus tutup tangan (+250).
   bonus: number;
+  // Bonus untuk penutup dan hukuman untuk pemain tercekih (negatif).
+  cekihBonus: number;
+  cekihPenalty: number;
   score: number;
 }
 
@@ -119,6 +124,7 @@ export interface Board {
   stock: Card[];
   discard: DiscardPile;
   jokerRank: Rank | null;
+  jokerCard: Card | null;
   penalties: number[];
   table: Card[][][];
   laidPureSeri: boolean[];
@@ -259,6 +265,7 @@ export class Room {
         stock: r.stock,
         discard: r.discard,
         jokerRank: r.jokerRank,
+        jokerCard: r.jokerCard ?? null,
         penalties: r.penalties,
         table: r.table,
         laidPureSeri: r.laidPureSeri,
@@ -276,6 +283,7 @@ export class Room {
       stock: o.stock,
       discard: o.discard,
       jokerRank: null,
+      jokerCard: null,
       penalties: o.penalties,
       table: [[], [], [], []],
       laidPureSeri: [false, false, false, false],
@@ -374,6 +382,7 @@ export class Room {
       stock: resolved.stock,
       discard: resolved.discard,
       jokerRank: resolved.jokerRank,
+      jokerCard: resolved.jokerCard,
       turn: this.firstPlayer,
       phase: "draw",
       drewFrom: null,
@@ -397,7 +406,7 @@ export class Room {
     const round = this.round!;
     this.status = "scoring";
     this.scoringArrangement = round.hands.map((hand, seat) =>
-      handArrangement(hand, round.jokerRank, canUseJokerMelds(hand, round.laidPureSeri[seat], round.jokerRank)),
+      handArrangement(hand, round.jokerRank, canUseMelds(hand, round.laidPureSeri[seat], round.jokerRank)),
     );
     this.scoringConfirmed = [false, false, false, false];
     this.seats.forEach((seatId, seat) => {
@@ -417,11 +426,8 @@ export class Room {
     if (this.scoringConfirmed[seat]) throw new Error("ALREADY_CONFIRMED");
     const hand = this.round!.hands[seat];
     const melds = intent.melds.map((ids) => ids.map((id) => findCard(hand, id)));
-    if (
-      !canUseJokerMelds(hand, this.round!.laidPureSeri[seat], this.round!.jokerRank) &&
-      melds.some((meld) => containsJoker(meld, this.round!.jokerRank))
-    ) {
-      throw new Error("JOKER_MELD_NEEDS_PURE_SERI");
+    if (melds.length > 0 && !canUseMelds(hand, this.round!.laidPureSeri[seat], this.round!.jokerRank)) {
+      throw new Error("MELD_NEEDS_PURE_SERI");
     }
     const arrangement = validateArrangement(hand, melds, this.round!.jokerRank);
     if (arrangement === null) throw new Error("INVALID_ARRANGEMENT");
@@ -447,13 +453,17 @@ export class Room {
     const scores = finalScores(round, arrangements);
     this.roundDetail = arrangements.map((arrangement, seat) => {
       const closed = round.result?.closedBy === seat ? round.result.bonus : 0;
+      // Tutup biasa (pernah mengambil dari buangan) hanya dapat bonus lewat cekih.
+      const viaCekih = round.pickedFromDiscard[seat];
       return {
         melds: [...round.table[seat], ...arrangement.melds],
         meldValues: [...round.table[seat], ...arrangement.melds].map((meld) => meldValue(meld, round.jokerRank)),
         leftover: arrangement.leftover,
         leftoverValues: arrangement.leftover.map((card) => loneValue(card, round.jokerRank)),
         penalty: round.penalties[seat],
-        bonus: closed,
+        bonus: viaCekih ? 0 : closed,
+        cekihBonus: viaCekih ? closed : 0,
+        cekihPenalty: cekihPenaltyOf(round, seat),
         score: scores[seat],
       };
     });

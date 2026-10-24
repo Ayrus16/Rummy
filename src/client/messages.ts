@@ -33,7 +33,7 @@ const MESSAGES: Record<string, string> = {
 
   // Penyusunan dan skor
   INVALID_ARRANGEMENT: "Susunan kombinasi tidak sah. Periksa lagi kombinasinya.",
-  JOKER_MELD_NEEDS_PURE_SERI: "Kombinasi yang memakai joker hanya dihitung plus kalau kamu punya seri murni.",
+  MELD_NEEDS_PURE_SERI: "Kombinasi hanya dihitung plus kalau kamu punya seri murni (sudah diturunkan atau ada di tangan).",
   ALREADY_CONFIRMED: "Kamu sudah konfirmasi susunan.",
 
   // Cekih
@@ -41,6 +41,7 @@ const MESSAGES: Record<string, string> = {
   CEKIH_NOT_ALLOWED: "Belum bisa menyebut cekih. Tanganmu belum tinggal satu kartu lagi untuk tutup.",
   CEKIH_NOT_FOUND: "Tidak ada cekih ke pemain itu yang bisa dibatalkan.",
   CEKIH_ALREADY_ACTIVE: "Cekih ke pemain itu sudah aktif.",
+  CEKIH_TARGET_NOT_ALLOWED: "Cekih hanya bisa ke pemain sebelummu dan sebelumnya lagi.",
 
   // Reset
   RESET_NOT_ALLOWED: "Hanya pemain pertama yang bisa mereset game.",

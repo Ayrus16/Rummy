@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import type { Card } from "../../src/rules/cards";
-import { canCallCekih } from "../../src/rules/cekih";
+import { canCallCekih, cekihTargets } from "../../src/rules/cekih";
 import { classify } from "../../src/rules/combos";
 import type { Intent } from "../../server/room";
 import type { PlayerInfo, PlayerView } from "../../server/view";
@@ -31,6 +31,8 @@ function bySuitThenRank(a: Card, b: Card): number {
 }
 
 const TARGET_PRESETS = [500, 1000, 1500, 2000];
+// Popup joker tertutup saat pemain klik OK, atau otomatis setelah sekian detik.
+const JOKER_POPUP_SECONDS = 15;
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
@@ -181,22 +183,25 @@ export function Table({ view, error, onIntent }: TableProps) {
   const nameOf = (seat: number) => view.players[seat]?.name ?? `P${seat + 1}`;
   // Cekih: tombol hanya aktif kalau tangan sudah tinggal satu kartu lagi untuk tutup.
   const myCekih = board?.cekih.filter((c) => c.caller === view.you) ?? [];
-  const cekihReady = board !== null && view.status === "playing" && canCallCekih(view.hand, board.jokerRank);
+  const cekihReady =
+    board !== null && view.status === "playing" && canCallCekih(view.hand, board.jokerRank, board.laidPureSeri[view.you]);
+  const allowedTargets = cekihTargets(view.you);
   const myConfirmed = scoringPhase && view.scoring!.confirmed[view.you];
   const jokerRank = board?.jokerRank ?? null;
 
-  // Joker diumumkan sekali saat ditentukan (popup 5 detik), lalu hilang dan tidak ditampilkan lagi.
-  const [jokerPopup, setJokerPopup] = useState<string | null>(null);
+  // Joker diumumkan sekali saat ditentukan. Popup menutupi meja sampai pemain klik OK atau waktunya habis,
+  // lalu tidak ditampilkan lagi: joker harus diingat pemain.
+  const [jokerLeft, setJokerLeft] = useState(0);
   const [prevJoker, setPrevJoker] = useState(jokerRank);
   if (jokerRank !== prevJoker) {
     setPrevJoker(jokerRank);
-    if (jokerRank !== null) setJokerPopup(jokerRank);
+    if (jokerRank !== null) setJokerLeft(JOKER_POPUP_SECONDS);
   }
   useEffect(() => {
-    if (jokerPopup === null) return;
-    const timer = setTimeout(() => setJokerPopup(null), 5000);
+    if (jokerLeft <= 0) return;
+    const timer = setTimeout(() => setJokerLeft((left) => left - 1), 1000);
     return () => clearTimeout(timer);
-  }, [jokerPopup]);
+  }, [jokerLeft]);
 
   // Konfirmasi reset kembali normal sendiri kalau tidak diklik lagi dalam beberapa detik.
   useEffect(() => {
@@ -304,7 +309,23 @@ export function Table({ view, error, onIntent }: TableProps) {
 
   return (
     <main className={styles.page}>
-      {jokerPopup !== null && <div className={styles.jokerPopup}>Joker ditentukan: {jokerPopup}</div>}
+      {jokerLeft > 0 && jokerRank !== null && (
+        <div className={styles.modalBackdrop}>
+          <div className={styles.jokerPopup} role="dialog" aria-label="Joker ditentukan">
+            <div>Joker ronde ini: {jokerRank}</div>
+            {board?.jokerCard && (
+              <div className={styles.jokerCard}>
+                <CardFace card={board.jokerCard} disabled />
+                <span>Kartu penentu (keluar dari permainan). Tiga kartu {jokerRank} lainnya jadi joker.</span>
+              </div>
+            )}
+            <div className={styles.label}>Ingat baik-baik, joker tidak ditampilkan lagi.</div>
+            <button type="button" onClick={() => setJokerLeft(0)}>
+              OK ({jokerLeft})
+            </button>
+          </div>
+        </div>
+      )}
       <header className={styles.header}>
         <div>Target {view.target} · Ronde {view.rounds}</div>
         <div className={styles.totals}>
@@ -597,7 +618,7 @@ export function Table({ view, error, onIntent }: TableProps) {
       {view.status === "playing" && (
         <section className={styles.actions}>
           {view.players.map((info, seat) =>
-            seat === view.you || info.kind === "empty" || myCekih.some((c) => c.target === seat) ? null : (
+            !allowedTargets.includes(seat as typeof view.you) || info.kind === "empty" || myCekih.some((c) => c.target === seat) ? null : (
               <button
                 key={seat}
                 type="button"
@@ -663,7 +684,9 @@ export function Table({ view, error, onIntent }: TableProps) {
                     ))}
                   </div>
                 )}
-                {detail.bonus !== 0 && <div className={styles.resultLine}>Bonus closed <span className={styles.plus}>{signed(detail.bonus)}</span></div>}
+                {detail.bonus !== 0 && <div className={styles.resultLine}>Bonus tutup tangan <span className={styles.plus}>{signed(detail.bonus)}</span></div>}
+                {!!detail.cekihBonus && <div className={styles.resultLine}>Bonus cekih <span className={styles.plus}>{signed(detail.cekihBonus)}</span></div>}
+                {!!detail.cekihPenalty && <div className={styles.resultLine}>Hukuman cekih <span className={styles.minus}>{signed(detail.cekihPenalty)}</span></div>}
                 {detail.penalty !== 0 && <div className={styles.resultLine}>Penalti joker <span className={styles.minus}>{signed(detail.penalty)}</span></div>}
               </div>
             ))}
