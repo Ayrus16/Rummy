@@ -12,6 +12,7 @@ import {
 import type { Card } from "../../src/rules/cards";
 import { canCallCekih, cekihTargets } from "../../src/rules/cekih";
 import { classify } from "../../src/rules/combos";
+import type { PlayerId } from "../../src/rules/opening";
 import type { Intent } from "../../server/room";
 import type { PlayerInfo, PlayerView } from "../../server/view";
 import styles from "./Table.module.css";
@@ -159,7 +160,8 @@ export function Table({ view, error, onIntent }: TableProps) {
   // Tarik kartu tangan untuk mengubah urutannya. Kartu bergeser langsung saat pointer melewati kartu lain.
   const dragRef = useRef<{ id: string; moved: boolean } | null>(null);
   const justDragged = useRef(false);
-  const [confirmReset, setConfirmReset] = useState(false);
+  // Aksi berisiko (reset, keluar) butuh dua klik. Kembali normal sendiri setelah beberapa detik.
+  const [confirming, setConfirming] = useState<"reset" | "leave" | null>(null);
   // Susunan kombinasi saat fase penyusunan. Null berarti belum diubah, jadi pakai usulan server.
   const [edit, setEdit] = useState<{ round: number; groups: string[][] } | null>(null);
   const [targetInput, setTargetInput] = useState("");
@@ -181,12 +183,17 @@ export function Table({ view, error, onIntent }: TableProps) {
   const scoringPhase = view.status === "scoring" && view.scoring !== null;
   const emptySeats = view.seats.filter((seat) => seat === "").length;
   const nameOf = (seat: number) => view.players[seat]?.name ?? `P${seat + 1}`;
+  // Penonton tidak punya kursi: tanpa tangan dan tanpa aksi.
+  const spectator = view.you === null;
   // Cekih: tombol hanya aktif kalau tangan sudah tinggal satu kartu lagi untuk tutup.
   const myCekih = board?.cekih.filter((c) => c.caller === view.you) ?? [];
   const cekihReady =
-    board !== null && view.status === "playing" && canCallCekih(view.hand, board.jokerRank, board.laidPureSeri[view.you]);
-  const allowedTargets = cekihTargets(view.you);
-  const myConfirmed = scoringPhase && view.scoring!.confirmed[view.you];
+    board !== null &&
+    view.you !== null &&
+    view.status === "playing" &&
+    canCallCekih(view.hand, board.jokerRank, board.laidPureSeri[view.you]);
+  const allowedTargets = view.you === null ? [] : cekihTargets(view.you);
+  const myConfirmed = scoringPhase && view.you !== null && view.scoring!.confirmed[view.you];
   const jokerRank = board?.jokerRank ?? null;
 
   // Joker diumumkan sekali saat ditentukan. Popup menutupi meja sampai pemain klik OK atau waktunya habis,
@@ -203,12 +210,11 @@ export function Table({ view, error, onIntent }: TableProps) {
     return () => clearTimeout(timer);
   }, [jokerLeft]);
 
-  // Konfirmasi reset kembali normal sendiri kalau tidak diklik lagi dalam beberapa detik.
   useEffect(() => {
-    if (!confirmReset) return;
-    const timer = setTimeout(() => setConfirmReset(false), 3000);
+    if (confirming === null) return;
+    const timer = setTimeout(() => setConfirming(null), 3000);
     return () => clearTimeout(timer);
-  }, [confirmReset]);
+  }, [confirming]);
 
   // Kartu yang belum punya posisi (baru datang) ditaruh di belakang, sesuai urutan dari server.
   const handIds = [
@@ -284,14 +290,14 @@ export function Table({ view, error, onIntent }: TableProps) {
     setPickupExtra([]);
   }
 
-  function resetClicked() {
-    if (!confirmReset) {
-      setConfirmReset(true);
+  function confirmThen(kind: "reset" | "leave") {
+    if (confirming !== kind) {
+      setConfirming(kind);
       return;
     }
-    setConfirmReset(false);
+    setConfirming(null);
     clearSelection();
-    onIntent({ type: "reset" });
+    onIntent({ type: kind });
   }
 
   // Kartu yang bisa dipakai untuk menurunkan seri murni atau membuang.
@@ -353,7 +359,7 @@ export function Table({ view, error, onIntent }: TableProps) {
           )}
         </div>
       )}
-      {view.rounds === 0 && view.status !== "finished" && view.status !== "cancelled" && (
+      {!spectator && view.rounds === 0 && view.status !== "finished" && view.status !== "cancelled" && (
         <section className={styles.targetCard}>
           <div className={styles.label}>Target poin: {view.target}</div>
           <div className={styles.presets}>
@@ -399,15 +405,17 @@ export function Table({ view, error, onIntent }: TableProps) {
       )}
       {scoringPhase && (
         <p className={styles.notice}>
-          Ronde selesai. {myConfirmed ? `Menunggu konfirmasi dari ${waiting}.` : "Susun kombinasimu lalu konfirmasi."}
+          Ronde selesai. {myConfirmed || spectator ? `Menunggu konfirmasi dari ${waiting}.` : "Susun kombinasimu lalu konfirmasi."}
         </p>
       )}
       {view.status === "waiting" && (
         <section className={styles.targetCard}>
           <div className={styles.label}>Menunggu pemain. Kursi kosong: {emptySeats}</div>
-          <button type="button" className={styles.stock} onClick={() => onIntent({ type: "add_bots" })}>
-            Tambah bot ({emptySeats})
-          </button>
+          {!spectator && (
+            <button type="button" className={styles.stock} onClick={() => onIntent({ type: "add_bots" })}>
+              Tambah bot ({emptySeats})
+            </button>
+          )}
         </section>
       )}
       {view.revealed !== null && view.status === "scoring" && (
@@ -421,6 +429,16 @@ export function Table({ view, error, onIntent }: TableProps) {
         </section>
       )}
       {error && <p className={styles.error}>{error}</p>}
+      {spectator && (
+        <section className={styles.targetCard}>
+          <div className={styles.label}>Kamu menonton. Tangan pemain tidak terlihat.</div>
+          {view.canSit && (
+            <button type="button" className={styles.stock} onClick={() => onIntent({ type: "sit" })}>
+              Ikut main
+            </button>
+          )}
+        </section>
+      )}
 
       <section className={styles.opponents}>
         {view.handCounts.map((count, seat) =>
@@ -524,14 +542,14 @@ export function Table({ view, error, onIntent }: TableProps) {
         )}
       </section>
 
-      {board && board.table[view.you].length > 0 && !scoringPhase && (
+      {board && view.you !== null && board.table[view.you].length > 0 && !scoringPhase && (
         <section className={styles.hand}>
           <div className={styles.label}>Kombinasi yang kamu turunkan</div>
           <Melds melds={board.table[view.you]} />
         </section>
       )}
 
-      {scoringPhase && !myConfirmed ? (
+      {spectator ? null : scoringPhase && !myConfirmed ? (
         <section className={styles.hand}>
           <div className={styles.label}>Kombinasimu (kartu yang tidak masuk kombinasi dihitung minus)</div>
           {groups.map((group, index) => (
@@ -615,10 +633,10 @@ export function Table({ view, error, onIntent }: TableProps) {
             {nameOf(c.caller)} menyebut cekih ke kamu.
           </p>
         ))}
-      {view.status === "playing" && (
+      {view.status === "playing" && !spectator && (
         <section className={styles.actions}>
           {view.players.map((info, seat) =>
-            !allowedTargets.includes(seat as typeof view.you) || info.kind === "empty" || myCekih.some((c) => c.target === seat) ? null : (
+            !allowedTargets.includes(seat as PlayerId) || info.kind === "empty" || myCekih.some((c) => c.target === seat) ? null : (
               <button
                 key={seat}
                 type="button"
@@ -643,8 +661,13 @@ export function Table({ view, error, onIntent }: TableProps) {
         </section>
       )}
       <section className={styles.actions}>
-        <button type="button" className={styles.reset} onClick={resetClicked} disabled={view.you !== 0}>
-          {view.you !== 0 ? "Reset game (hanya pemain pertama)" : confirmReset ? "Klik lagi untuk reset game" : "Reset game"}
+        {!spectator && (
+          <button type="button" className={styles.danger} onClick={() => confirmThen("leave")}>
+            {confirming === "leave" ? "Klik lagi untuk keluar dari meja" : "Keluar dari meja"}
+          </button>
+        )}
+        <button type="button" className={styles.reset} onClick={() => confirmThen("reset")} disabled={!view.canReset}>
+          {!view.canReset ? "Reset game (hanya pemain manusia pertama)" : confirming === "reset" ? "Klik lagi untuk reset game" : "Reset game"}
         </button>
       </section>
       {panel === "result" && view.roundDetail !== null && (
